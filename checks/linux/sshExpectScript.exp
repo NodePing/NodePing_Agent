@@ -1,0 +1,41 @@
+set timeout 30
+
+#arguments
+set server [lindex $argv 0]
+set user [lindex $argv 1]
+set pass [lindex $argv 2]
+set port [lindex $argv 3]
+set sshtimeout [lindex $argv 4]
+
+# connect to server via ssh, login, and then exit
+send_user "connecting to $server\n"
+spawn ssh -t -t -p $port -o ConnectTimeout=$sshtimeout -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o NumberOfPasswordPrompts=1 -o KexAlgorithms=+diffie-hellman-group1-sha1,diffie-hellman-group14-sha1,diffie-hellman-group14-sha256,diffie-hellman-group16-sha512,diffie-hellman-group18-sha512,diffie-hellman-group-exchange-sha1,diffie-hellman-group-exchange-sha256,ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-sha2-nistp521,curve25519-sha256,curve25519-sha256@libssh.org -o Ciphers=+3des-cbc,aes128-cbc,aes192-cbc,aes256-cbc,rijndael-cbc@lysator.liu.se,aes128-ctr,aes192-ctr,aes256-ctr,aes128-gcm@openssh.com,aes256-gcm@openssh.com,chacha20-poly1305@openssh.com -l $user $server
+
+expect {
+  "> " { send_user ">"}
+  "$ " { send_user "$"}
+  "# " { send_user "#"}
+  "assword:" {
+        send "$pass\n"
+        expect {
+          "> " { send_user "Logged in"
+                 send "exit\n"
+                 exit}
+          "$ " { send_user "Logged in"
+                 send "exit\n"
+                 exit}
+          "# " { send_user "Logged in"
+                 send "exit\n"
+                 exit}
+          "closed." { send_user "Logged in"
+                           send "exit\n"
+                           exit}
+          default { send_user "Login failed"
+                    exit}
+        }
+  }
+  default {
+        send_user "Failed to connect"
+        exit
+  }
+}
