@@ -1,6 +1,6 @@
 # NodePing AGENT software
 
-Software to run a **NodePing** AGENT check on Linux devices. It has been tested on Ubuntu and Raspian and requires node.js
+Software to run a **NodePing** AGENT check on Linux devices. It has been tested on Ubuntu and Raspian and requires node.js v10 or higher.
 
 ## NodePing AGENT checks
 
