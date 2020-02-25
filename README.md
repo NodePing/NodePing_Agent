@@ -1,6 +1,6 @@
 # NodePing AGENT software
 
-Software to run a **NodePing** AGENT check on Linux devices. It has been tested on Ubuntu and Raspberian and requires node.js
+Software to run a **NodePing** AGENT check on Linux devices. It has been tested on Ubuntu and Raspian and requires node.js
 
 ## NodePing AGENT checks
 
@@ -45,10 +45,13 @@ Run an `npm install` to get all the node dependencies. Note that if you use the 
 
 Run the NodePingAgent.js with the install argument along with your check ID and check token
 
-`~/NodePing_Agent$ node NodePingAgent.js install 202002241738UUL8O-0BYZ5Z8F MXNVTSTW-8H0L-4OPE-8C7O-XHNTTX2HPEVO
+``` sh
+~/NodePing_Agent$ node NodePingAgent.js install 202002241738UUL8O-0BYZ5Z8F MXNVTSTW-8H0L-4OPE-8C7O-XHNTTX2HPEVO
 2020-02-24T21:12:41.512Z Info :NodePingAgent installing NodePingAgent
 2020-02-24T21:12:41.552Z Info: NodePingAgent setting checkid = 202002241738UUL8O-0BYZ5Z8F, token = MXNVTSTW-8H0L-4OPE-8C7O-XHNTTX2HPEVO, and interval = 1
-2020-02-24T21:12:41.778Z Info: NodePingAgent crontab installed and enabled for every 1 minutes.`
+2020-02-24T21:12:41.778Z Info: NodePingAgent crontab installed and enabled for every 1 minutes.
+```
+
 
 The AGENT software will install itself as a crontab for the user that ran the install.
 
@@ -58,14 +61,16 @@ You'll probably want to add log rotation so the AGENT doesn't fill up your parti
 
 Add the following to the log rotate file.
 
-`/home/<youruser>/NodePing_Agent/log/*.log {
+``` sh
+/home/<youruser>/NodePing_Agent/log/*.log {
         daily
         missingok
         rotate 10
         compress
         delaycompress
         notifempty
-}`
+}
+```
 
 You should now be able to assign other NodePing checks to this AGENT and they'll run from this server.
 
@@ -73,12 +78,14 @@ You should now be able to assign other NodePing checks to this AGENT and they'll
 
 To see what the AGENT would send as a heartbeat to NodePing, run it with the test argument:
 
-`~/NodePing_Agent$ node NodePingAgent.js test
+``` sh
+~/NodePing_Agent$ node NodePingAgent.js test
 2020-02-24T21:33:24.615Z Info: NodePingAgent data: {
   npcheckclock: { start: 1582580004615, end: 1582580004615 },
   checkcount: 5
 }
-2020-02-24T21:33:24.618Z Info: Not posting anything to NodePing.`
+2020-02-24T21:33:24.618Z Info: Not posting anything to NodePing.
+```
 
 This output says there are 5 checks currently configured to run on this AGENT.
 
@@ -86,30 +93,37 @@ This output says there are 5 checks currently configured to run on this AGENT.
 
 To disable the AGENT software:
 
-`~/NodePing_Agent$ node NodePingAgent.js disable
+``` sh
+~/NodePing_Agent$ node NodePingAgent.js disable
 2020-02-24T21:24:09.698Z *** WARNING *** NodePingAgent disabled in ./config.js
 2020-02-24T21:24:09.739Z Info: NodePingAgent disabling NodePingAgent
 2020-02-24T21:24:09.889Z Info: NodePingAgent crontab removed
-2020-02-24T21:24:09.895Z Info: NodePingAgent disabled`
+2020-02-24T21:24:09.895Z Info: NodePingAgent disabled
+```
+
 
 ## Enable
 
 If disabled, to re-enable the AGENT software:
 
-`~/NodePing_Agent$ node NodePingAgent.js enable
+``` sh
+~/NodePing_Agent$ node NodePingAgent.js enable
 2020-02-24T21:25:15.753Z *** WARNING *** NodePingAgent disabled in ./config.js
 2020-02-24T21:25:15.794Z Info: NodePingAgent enabling NodePingAgent
-2020-02-24T21:25:15.954Z Info: NodePingAgent crontab installed and enabled for every 1 minutes.`
+2020-02-24T21:25:15.954Z Info: NodePingAgent crontab installed and enabled for every 1 minutes.
+```
 
-## Remote
+## Remove
 
 To completely remove the AGENT software and its log files:
 
-`~/NodePing_Agent$ node NodePingAgent.js remove
+``` sh
+~/NodePing_Agent$ node NodePingAgent.js remove
 2020-02-24T21:26:22.393Z *** WARNING *** NodePingAgent disabled in ./config.js
 2020-02-24T21:26:22.433Z Info: NodePingAgent removing NodePingAgent
 2020-02-24T21:26:22.585Z Info: NodePingAgent crontab removed
-2020-02-24T21:26:22.997Z Info: NodePingAgent files removed`
+2020-02-24T21:26:22.997Z Info: NodePingAgent files removed
+```
 
 This removes the entire NodePing_Agent directory and the crontab line.
 
