@@ -34,12 +34,12 @@ var util = require('util'),
     checksToRun = [];
 
 process.on('uncaughtException', function (err) {
-    console.log(new Date(),'Error: NodePingAgent process error: '+err.message);
+    console.log(new Date().toISOString(),'Error: NodePingAgent process error: '+err.message);
     process.exit(1);
 });
 
 process.on('SIGINT', function () {
-    console.log(new Date(),'NodePingAgent - SIGINT - Exiting.');
+    console.log(new Date().toISOString(),'NodePingAgent - SIGINT - Exiting.');
     process.kill(process.pid);
 });
 
@@ -55,15 +55,15 @@ var getPluginData = function(data, callback) {
     if (pluginsToRun.length > 0) {
         var next = pluginsToRun.pop();
         try {
-            console.log(new Date(),'Info: NodePingAgent: Gathering data from',next,'plugin.');
+            console.log(new Date().toISOString(),'Info: NodePingAgent: Gathering data from',next,'plugin.');
             var plugin = require("./plugins/" + next);
             if (plugin) {
                 return plugin.get(data, getPluginData);
             } else {
-                console.log(new Date(),'Error: NodePingAgent: plugin',next,'missing.');
+                console.log(new Date().toISOString(),'Error: NodePingAgent: plugin',next,'missing.');
             }
         } catch(e) {
-            console.log(new Date(),'Error: NodePingAgent: plugin',next,'threw error:',e);
+            console.log(new Date().toISOString(),'Error: NodePingAgent: plugin',next,'threw error:',e);
         }
         return getPluginData(data, callback);
     } else {
@@ -76,16 +76,16 @@ var getPluginData = function(data, callback) {
 
 var digestData = function(data) {
     if (test) {
-        console.log(new Date(),'Info: NodePingAgent data:',data);
-        console.log(new Date(),'Info: Not posting anything to NodePing.');
+        console.log(new Date().toISOString(),'Info: NodePingAgent data:',data);
+        console.log(new Date().toISOString(),'Info: Not posting anything to NodePing.');
         return true;
     } else if (!config.NodePingAgent_enabled) {
         return false;
     }
     // Send data to NodePing
-    console.log(new Date(),'Info: NodePingAgent: offset for heartbeat:',heartbeatoffset);
+    console.log(new Date().toISOString(),'Info: NodePingAgent: offset for heartbeat:',heartbeatoffset);
     setTimeout( function() {
-        console.log(new Date(),'Info: NodePingAgent: Sending heartbeat to NodePing:',data);
+        console.log(new Date().toISOString(),'Info: NodePingAgent: Sending heartbeat to NodePing:',data);
         postHeartbeat(data);
     }, heartbeatoffset);
     return true;
@@ -120,7 +120,7 @@ var postHeartbeat = function(data, retries) {
                 if (!completed) {
                     completed = true;
                     if (retries > 10) {
-                        console.log(new Date(),'Error: NodePingAgent: failed to post data to NodePing');
+                        console.log(new Date().toISOString(),'Error: NodePingAgent: failed to post data to NodePing');
                     } else {
                         retries++;
                         postHeartbeat(data, retries);
@@ -129,7 +129,7 @@ var postHeartbeat = function(data, retries) {
                 if (req) {
                     req.abort();
                 }
-                console.log(new Date(),'Error: NodePingAgent: timer timeout:',retries);
+                console.log(new Date().toISOString(),'Error: NodePingAgent: timer timeout:',retries);
                 return true;
             }, 9000);
 
@@ -143,7 +143,7 @@ var postHeartbeat = function(data, retries) {
                     clearTimeout(timeoutid);
                     completed = true;
                     body = JSON.parse(body);
-                    console.log(new Date(),'Info: NodePingAgent: received from NodePing:',body);
+                    console.log(new Date().toISOString(),'Info: NodePingAgent: received from NodePing:',body);
                     if (body.success) {
                         // Look for any config changes
                         if (body.config) updateConfig(body.config);
@@ -195,14 +195,14 @@ var postHeartbeat = function(data, retries) {
                             updateConfig(body.config);
                         }
                         if (retries > 10) {
-                            console.log(new Date(),'Error: NodePingAgent: failed to post heartbeat to NodePing:',body);
+                            console.log(new Date().toISOString(),'Error: NodePingAgent: failed to post heartbeat to NodePing:',body);
                             return false;
                         } else {
                             retries++;
                             postHeartbeat(data, retries);
                         }
                         if (body.error) {
-                            console.log(new Date(),'Error: NodePingAgent: Error posting heartbeat to NodePing:',body);
+                            console.log(new Date().toISOString(),'Error: NodePingAgent: Error posting heartbeat to NodePing:',body);
                             if (body.error.indexOf('throttling') > -1) {
                                 retries++
                                 postHeartbeat(data, retries);
@@ -222,7 +222,7 @@ var postHeartbeat = function(data, retries) {
                 if (!completed) {
                     completed = true;
                     if (retries > 10) {
-                        console.log(new Date(),'Error: NodePingAgent: failed to post data to NodePing: error:',e);
+                        console.log(new Date().toISOString(),'Error: NodePingAgent: failed to post data to NodePing: error:',e);
                     } else {
                         retries++;
                         postHeartbeat(data, retries);
@@ -232,14 +232,14 @@ var postHeartbeat = function(data, retries) {
                     req.abort();
                     req = null;
                 }
-                console.log(new Date(),'Error: NodePingAgent: Error event from NodePing:',e);
+                console.log(new Date().toISOString(),'Error: NodePingAgent: Error event from NodePing:',e);
                 return true;
             }).on("timeout", function() {
                 clearTimeout(timeoutid);
                 if (!completed) {
                     completed = true;
                     if (retries > 10) {
-                        console.log(new Date(),'Error: NodePingAgent: failed to post data to NodePing: timeout');
+                        console.log(new Date().toISOString(),'Error: NodePingAgent: failed to post data to NodePing: timeout');
                     } else {
                         retries++;
                         postHeartbeat(data, retries);
@@ -249,7 +249,7 @@ var postHeartbeat = function(data, retries) {
                     req.abort();
                     req = null;
                 }
-                console.log(new Date(),'Error: NodePingAgent: Timeout event on NodePing');
+                console.log(new Date().toISOString(),'Error: NodePingAgent: Timeout event on NodePing');
                 return true;
             });
             req.on("socket", function (socket) {
@@ -260,11 +260,11 @@ var postHeartbeat = function(data, retries) {
         
     } catch (connerror) {
         clearTimeout(timeoutid);
-        console.log(new Date(),'Error: NodePingAgent error: Post to NodePing error: ',connerror);
+        console.log(new Date().toISOString(),'Error: NodePingAgent error: Post to NodePing error: ',connerror);
         if (!completed) {
             completed = true;
             if (retries > 10) {
-                console.log(new Date(),'Error: NodePingAgent: failed to post data to NodePing');
+                console.log(new Date().toISOString(),'Error: NodePingAgent: failed to post data to NodePing');
             } else {
                 retries++;
                 postHeartbeat(data, retries);
@@ -274,7 +274,7 @@ var postHeartbeat = function(data, retries) {
             req.abort();
             req = null;
         }
-        console.log(new Date(),'Error: NodePingAgent: Error caught on NodePing:',connerror);
+        console.log(new Date().toISOString(),'Error: NodePingAgent: Error caught on NodePing:',connerror);
     }
     return true;
 }
@@ -287,25 +287,25 @@ var processChecks = function() {
             runCheck(check);
         }, checkoffset);
     } else {
-        console.log(new Date(),'Info: NodePingAgent: finished running all checks.');
+        console.log(new Date().toISOString(),'Info: NodePingAgent: finished running all checks.');
     }
     return true;
 };
 
 var runCheck = function (checkinfo) {
-    console.log(new Date(),'Info: NodePingAgent: running check:',checkinfo);
+    console.log(new Date().toISOString(),'Info: NodePingAgent: running check:',checkinfo);
     var checkpath = config.NodePingAgent_path + path.sep + 'checks' + path.sep + os.platform() + path.sep + 'check_' + checkinfo.type.toLowerCase();
     fs.access(checkpath+'.js', fs.constants.F_OK, function(err) {
         if (err) {
-            console.log(new Date(),'Error: NodePingAgent: No code available for check type:',checkinfo.type);
+            console.log(new Date().toISOString(),'Error: NodePingAgent: No code available for check type:',checkinfo.type);
         } else {
-            console.log(new Date(),'Info: NodePingAgent: Running check type:',checkinfo.type);
+            console.log(new Date().toISOString(),'Info: NodePingAgent: Running check type:',checkinfo.type);
             try {
                 var check = require(checkpath);
                 // Decode the params value.
                 check.check(checkinfo);
             } catch (bonk) {
-                console.log(new Date(),'Error: NodePingAgent: Check ',checkinfo,' error: ',bonk);
+                console.log(new Date().toISOString(),'Error: NodePingAgent: Check ',checkinfo,' error: ',bonk);
                 var resultobj = require('./checks/results.js');
                 var now = new Date().getTime();
                 checkinfo.results = {start:now,end:now,runtime:0,success:false, statusCode:'error', message:'Invalid check type'};
@@ -340,7 +340,7 @@ var setCronJob = function(interval) {
     // Delete current crontab if any.
     require('crontab').load(function(err,tab) {
         if (err) {
-            console.log(new Date(),'Error: NodePingAgent error on crontab load',err);
+            console.log(new Date().toISOString(),'Error: NodePingAgent error on crontab load',err);
         }
         tab.remove(tab.findCommand("NodePingAgent.js"));
         // Add new crontab
@@ -348,9 +348,9 @@ var setCronJob = function(interval) {
         agentTab.minute().every(config.check_interval);
         tab.save(function(err,tab) {
             if (err) {
-                console.log(new Date(),'Error: NodePingAgent error on crontab save',err);
+                console.log(new Date().toISOString(),'Error: NodePingAgent error on crontab save',err);
             } else {
-                console.log(new Date(),'Info: NodePingAgent crontab installed and enabled for every '+config.check_interval.toString()+' minutes.');
+                console.log(new Date().toISOString(),'Info: NodePingAgent crontab installed and enabled for every '+config.check_interval.toString()+' minutes.');
             }
             return true;
         });
@@ -361,9 +361,9 @@ var setCronJob = function(interval) {
 
 var installOrEnable = function() {
     if (install) {
-        console.log(new Date(),'Info :NodePingAgent installing NodePingAgent');
+        console.log(new Date().toISOString(),'Info :NodePingAgent installing NodePingAgent');
     } else {
-        console.log(new Date(),'Info: NodePingAgent enabling NodePingAgent');
+        console.log(new Date().toISOString(),'Info: NodePingAgent enabling NodePingAgent');
     }
 
     // Let's look at the arguments passed to see if we have a check id and check token to do the install.
@@ -381,7 +381,7 @@ var installOrEnable = function() {
                 // This is a check id
                 checkid =  arg;
             } else {
-                console.log(new Date(),'Error: unrecognized argument:',arg);
+                console.log(new Date().toISOString(),'Error: unrecognized argument:',arg);
             }
         }
     };
@@ -390,15 +390,15 @@ var installOrEnable = function() {
     if (process.argv[5]) identifyArg(process.argv[5]);
 
     if (interval && checkid && checktoken) {
-        console.log(new Date(),'Info: NodePingAgent setting checkid = '+checkid+', token = '+checktoken+', and interval = '+interval);
+        console.log(new Date().toISOString(),'Info: NodePingAgent setting checkid = '+checkid+', token = '+checktoken+', and interval = '+interval);
         config.check_id = checkid;
         config.check_token = checktoken;
         config.check_interval = interval;
     } else if (!checkid && (!config.check_id || config.check_id === '<Your NodePing Check ID>')) {
-        console.log(new Date(),'Error: NodePingAgent missing check id.');
+        console.log(new Date().toISOString(),'Error: NodePingAgent missing check id.');
         process.exit(1);
     } else if (!checktoken && (!config.check_token || config.check_token === '<Your NodePing Check Token>')) {
-        console.log(new Date(),'Error: NodePingAgent missing check token');
+        console.log(new Date().toISOString(),'Error: NodePingAgent missing check token');
         process.exit(1);
     }
     config.NodePingAgent_enabled = true;
@@ -414,37 +414,37 @@ var installOrEnable = function() {
 
 var disableOrRemove = function() {
     if (disable) {
-        console.log(new Date(),'Info: NodePingAgent disabling NodePingAgent');
+        console.log(new Date().toISOString(),'Info: NodePingAgent disabling NodePingAgent');
     } else {
-        console.log(new Date(),'Info: NodePingAgent removing NodePingAgent');
+        console.log(new Date().toISOString(),'Info: NodePingAgent removing NodePingAgent');
     }
     
     // Remove the crontab
     require('crontab').load(function(err,tab) {
         if (err) {
-            console.log(new Date(),'Error: NodePingAgent error on crontab load',err);
+            console.log(new Date().toISOString(),'Error: NodePingAgent error on crontab load',err);
         }
         tab.remove(tab.findCommand("NodePingAgent.js"));
         tab.save(function(err,tab) {
             if (err) {
-                console.log(new Date(),'Error: NodePingAgent error on crontab save',err);
+                console.log(new Date().toISOString(),'Error: NodePingAgent error on crontab save',err);
             }
-            console.log(new Date(),'Info: NodePingAgent crontab removed');
+            console.log(new Date().toISOString(),'Info: NodePingAgent crontab removed');
             if (remove) {
                 // Delete NodePingAgent files
                 var rmdir = require('rimraf');
                 rmdir(config.NodePingAgent_path, function(err) {
                     if (err) {
-                        console.log(new Date(),'Error: NodePingAgent unable to delete files in',config.NodePingAgent_path);
+                        console.log(new Date().toISOString(),'Error: NodePingAgent unable to delete files in',config.NodePingAgent_path);
                     } else {
-                        console.log(new Date(),'Info: NodePingAgent files removed');
+                        console.log(new Date().toISOString(),'Info: NodePingAgent files removed');
                     }
                     process.exit(0);
                 });
             } else {
                 config.NodePingAgent_enabled = false;
                 persistConfig();
-                console.log(new Date(),'Info: NodePingAgent disabled');
+                console.log(new Date().toISOString(),'Info: NodePingAgent disabled');
                 process.exit(0);
             }
         });
@@ -454,7 +454,7 @@ var disableOrRemove = function() {
 };
 
 if (!config.NodePingAgent_enabled) {
-    console.log(new Date(),'*** WARNING *** NodePingAgent disabled in ./config.js');
+    console.log(new Date().toISOString(),'Info: NodePingAgent is currenly disabled in ./config.js');
 }
 for (var p in config.plugins) {
     if (config.plugins[p].enabled) {
@@ -468,7 +468,7 @@ if (install || enable) {
     disableOrRemove();
 } else {
     if (config.check_id === '<Your NodePing Check ID>' || config.check_token === '<Your NodePing Check Token>') {
-        console.log(new Date(),'Error: NodePingAgent: Please add your check id and check token to config.js');
+        console.log(new Date().toISOString(),'Error: NodePingAgent: Please add your check id and check token to config.js');
         process.exit(1);
     }
     getPluginData(dataToReturn, getPluginData);
