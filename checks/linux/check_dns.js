@@ -21,7 +21,7 @@ var sys = require('util');
 var logger = console;
 var dns = require('dns');
 var ndns = require('native-dns');
-var validate = require('validator').check;
+var ipaddr = require('ipaddr.js');
 
 var check = exports.check = function(jobinfo) {
     var timeout = config.timeout *1;
@@ -36,10 +36,9 @@ var check = exports.check = function(jobinfo) {
     //logger.log('info','Search Path: '+sys.inspect(ndns.platform.search_path));
     // What are we checking for?
     if (!jobinfo.parameters.targetip) {
-        try {
-            validate(jobinfo.parameters.target).isIP();
+        if (ipaddr.isValid(jobinfo.parameters.target)) {
             jobinfo.parameters.targetip = jobinfo.parameters.target;
-        } catch (iperror) {
+        } else {
             if (jobinfo.toIP) { // Already been around this tree.
                 jobinfo.toIP = false;
                 debugMessage('info',"check_dns: Invalid DNS FQDN (looping) - "+jobinfo.parameters.target);

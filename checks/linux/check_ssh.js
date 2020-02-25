@@ -21,7 +21,6 @@ var sys = require('util');
 var spawn = require('child_process').spawn;
 var exec = require('child_process').exec;
 var logger = console;
-var check = require('validator').check;
 
 
 exports.check = function(jobinfo){
@@ -43,36 +42,23 @@ exports.check = function(jobinfo){
     var username = 'NodePingTest';
     if(jobinfo.parameters.username){
         // Validate
-        try{
-            check(jobinfo.parameters.username).is(/^[a-zA-Z\-_0-9]+$/);
-            username = jobinfo.parameters.username;
-        }catch(usererror){
-            validationerrors.push("Username contains invalid characters.");
-        }
+        if ( jobinfo.parameters.username.match(/[^\w-]/) ) validationerrors.push("Username contains invalid characters.");
     }else{
         justchecking = true;
     }
     var password = 'NodePingPassword';
     if(jobinfo.parameters.password){
-        try{
-            // escape special characters
-            //logger.log('info',"check_ssh: Password: "+jobinfo.parameters.password);
-            password = jobinfo.parameters.password.replace(/\\/g, '\\\\');
-            password = password.replace(/\"/g, '\\"');
-            password = password.replace(/\`/g, '\\`');
-            //logger.log('info',"check_ssh: Password after escape: "+password);
-            check(password).notContains(" ").notContains("$");
-        }catch(usererror){
-            validationerrors.push("Password cannot contain spaces or dollar signs.");
-        }
-    }else{
+        // escape special characters
+        //logger.log('info',"check_ssh: Password: "+jobinfo.parameters.password);
+        password = jobinfo.parameters.password.replace(/\\/g, '\\\\');
+        password = password.replace(/\"/g, '\\"');
+        password = password.replace(/\`/g, '\\`');
+        //logger.log('info',"check_ssh: Password after escape: "+password);
+        if ( password.match(/[ \$]/ )) validationerrors.push("Password cannot contain spaces or dollar signs.");
+    } else {
         justchecking = true;
     }
-    try{
-        check(jobinfo.parameters.target).notContains(" ").notContains("$").notContains(";").notContains('"');
-    }catch(usererror){
-        validationerrors.push("Hostname cannot contain spaces, dollar signs, semicolons, or double quotes.");
-    }
+    if ( jobinfo.parameters.target.match(/[ \$;"]/ )) validationerrors.push("Hostname cannot contain spaces, dollar signs, semicolons, or double quotes.");
     jobinfo.results = {start:new Date().getTime()};
     if(validationerrors.length > 0){
         //logger.log('info',"check_ssh: Invalid configuration");
@@ -89,7 +75,7 @@ exports.check = function(jobinfo){
         // Do we have a username and password?
         if(justchecking){
             // We don't expect to be able to log in but we need to get a proper failure.
-            command = 'ssh -t -t -p '+port.toString()+' -o ConnectTimeout='+timeoutSec.toString()+' -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o ChallengeResponseAuthentication=no -o KbdInteractiveAuthentication=no -o PasswordAuthentication=no -o KexAlgorithms=+diffie-hellman-group1-sha1,diffie-hellman-group14-sha1,diffie-hellman-group14-sha256,diffie-hellman-group16-sha512,diffie-hellman-group18-sha512,diffie-hellman-group-exchange-sha1,diffie-hellman-group-exchange-sha256,ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-sha2-nistp521,curve25519-sha256,curve25519-sha256@libssh.org -o Ciphers=+3des-cbc,aes128-cbc,aes192-cbc,aes256-cbc,rijndael-cbc@lysator.liu.se,aes128-ctr,aes192-ctr,aes256-ctr,aes128-gcm@openssh.com,aes256-gcm@openssh.com,chacha20-poly1305@openssh.com -i /home/nodeping/.ssh/id_rsa '+jobinfo.parameters.target;
+            command = 'ssh -t -t -p '+port.toString()+' -o ConnectTimeout='+timeoutSec.toString()+' -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o ChallengeResponseAuthentication=no -o KbdInteractiveAuthentication=no -o PasswordAuthentication=no -o KexAlgorithms=+diffie-hellman-group1-sha1,diffie-hellman-group14-sha1,diffie-hellman-group14-sha256,diffie-hellman-group16-sha512,diffie-hellman-group18-sha512,diffie-hellman-group-exchange-sha1,diffie-hellman-group-exchange-sha256,ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-sha2-nistp521,curve25519-sha256,curve25519-sha256@libssh.org -o Ciphers=+3des-cbc,aes128-cbc,aes192-cbc,aes256-cbc,rijndael-cbc@lysator.liu.se,aes128-ctr,aes192-ctr,aes256-ctr,aes128-gcm@openssh.com,aes256-gcm@openssh.com,chacha20-poly1305@openssh.com '+jobinfo.parameters.target;
         }else{
             // Use expect to try a login.
             command = 'expect '+__dirname+'/sshExpectScript.exp '+jobinfo.parameters.target+' '+username+' "'+password+'" '+port.toString()+' '+timeoutSec.toString();

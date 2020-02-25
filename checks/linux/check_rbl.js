@@ -20,7 +20,7 @@ var resultobj = require('../results.js');
 var sys = require('util');
 var logger = console;
 var ndns = require('native-dns');
-var validate = require('validator').check;
+var ipaddr = require('ipaddr.js');
 
 var check = exports.check = function(jobinfo){
     var timeout = config.timeout *1;
@@ -36,46 +36,46 @@ var check = exports.check = function(jobinfo){
         resultobj.process(jobinfo, true);
         return true;
     }
-    try{
-        if(!jobinfo.parameters.targetip){
-            validate(jobinfo.parameters.target).isIP();
+
+    if (!jobinfo.parameters.targetip) {
+        if (ipaddr.isValid(jobinfo.parameters.target)) {
             jobinfo.parameters.targetip = jobinfo.parameters.target;
-        }
-    }catch (iperror){
-        if(jobinfo.toIP){ // Already been around this tree.
-            jobinfo.toIP = false;
-            debugMessage('info',"check_rbl: Invalid target (looping) - "+jobinfo.parameters.target);
-            jobinfo.results = {start: new Date().getTime()};
-            jobinfo.results.end = new Date().getTime();
-            jobinfo.results.runtime = 0;
-            jobinfo.results.success = false;
-            jobinfo.results.statusCode = 'error';
-            jobinfo.results.message = 'Invalid looping FQDN';
-            resultobj.process(jobinfo);
-            return true;
-        }
-        jobinfo.toIP = true;
-        debugMessage('info','check_rbl: Gotta resolve the server '+jobinfo.parameters.target);
-        // Look up this server
-        ndns.lookup(jobinfo.parameters.target,null, function(err,address){
-            if(address && address.length > 0){
-                debugMessage('info',"check_rbl: Had to translate "+jobinfo.parameters.target+" to IP - got "+sys.inspect(address));
-                jobinfo.parameters.targetip = address;
-                check(jobinfo);
-                return true;
-            }else{
-                debugMessage('info',"check_rbl: Invalid target FQDN - "+jobinfo.parameters.target);
+        } else {
+            if(jobinfo.toIP){ // Already been around this tree.
+                jobinfo.toIP = false;
+                debugMessage('info',"check_rbl: Invalid target (looping) - "+jobinfo.parameters.target);
                 jobinfo.results = {start: new Date().getTime()};
                 jobinfo.results.end = new Date().getTime();
                 jobinfo.results.runtime = 0;
                 jobinfo.results.success = false;
                 jobinfo.results.statusCode = 'error';
-                jobinfo.results.message = 'Invalid host - no dns resolution';
+                jobinfo.results.message = 'Invalid looping FQDN';
                 resultobj.process(jobinfo);
                 return true;
             }
-        });
-        return true;
+            jobinfo.toIP = true;
+            debugMessage('info','check_rbl: Gotta resolve the server '+jobinfo.parameters.target);
+            // Look up this server
+            ndns.lookup(jobinfo.parameters.target,null, function(err,address){
+                if(address && address.length > 0){
+                    debugMessage('info',"check_rbl: Had to translate "+jobinfo.parameters.target+" to IP - got "+sys.inspect(address));
+                    jobinfo.parameters.targetip = address;
+                    check(jobinfo);
+                    return true;
+                }else{
+                    debugMessage('info',"check_rbl: Invalid target FQDN - "+jobinfo.parameters.target);
+                    jobinfo.results = {start: new Date().getTime()};
+                    jobinfo.results.end = new Date().getTime();
+                    jobinfo.results.runtime = 0;
+                    jobinfo.results.success = false;
+                    jobinfo.results.statusCode = 'error';
+                    jobinfo.results.message = 'Invalid host - no dns resolution';
+                    resultobj.process(jobinfo);
+                    return true;
+                }
+            });
+            return true;
+        }
     }
     if(!jobinfo.parameters.targetip){
         debugMessage('error',"check_rbl: Invalid targetip - "+sys.inspect(jobinfo));

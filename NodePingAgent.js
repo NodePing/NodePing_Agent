@@ -181,7 +181,7 @@ var postHeartbeat = function(data, retries) {
                             // Stagger the running of the checks evently over about 50 seconds minus the heartbeat offset
                             var checksToRunCount = checksToRun.length;
                             if (checksToRunCount) {
-                                if (checksToRunCount > 100 || checksToRunCount < 5) {
+                                if (checksToRunCount > 500 || checksToRunCount < 5) {
                                     checkoffset = 0;
                                 } else {
                                     checkoffset = Math.floor((50000-heartbeatoffset)/checksToRunCount);
