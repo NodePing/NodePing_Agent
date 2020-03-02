@@ -31,7 +31,7 @@ var check = exports.check = function(jobinfo) {
     }
     if (timeout > 90000) timeout = 90000;
     if (!jobinfo.parameters.target || jobinfo.parameters.target == '') {
-        jobinfo.parameters.target = '127.0.0.1';
+        jobinfo.parameters.target = '8.8.8.8';
     }
     //logger.log('info','Search Path: '+sys.inspect(ndns.platform.search_path));
     // What are we checking for?
