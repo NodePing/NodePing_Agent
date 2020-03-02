@@ -198,17 +198,17 @@ var postHeartbeat = function(data, retries) {
                             console.log(new Date().toISOString(),'Error: NodePingAgent: failed to post heartbeat to NodePing:',body);
                             return false;
                         } else {
+                            if (body.error) {
+                                console.log(new Date().toISOString(),'Error: NodePingAgent: Error posting heartbeat to NodePing:',body);
+                                if (body.error.indexOf('hrottl') > -1) {
+                                    console.log(new Date().toISOString(),'Info: NodePingAgent: Heartbeat is throttled');
+                                    return false;
+                                }
+                            }
                             retries++;
                             postHeartbeat(data, retries);
                         }
-                        if (body.error) {
-                            console.log(new Date().toISOString(),'Error: NodePingAgent: Error posting heartbeat to NodePing:',body);
-                            if (body.error.indexOf('throttling') > -1) {
-                                retries++
-                                postHeartbeat(data, retries);
-                            }
-                            return false;
-                        }
+                        
                         
                     }
                     return true;
