@@ -12,7 +12,7 @@
  *  static config.
  **/
 var config = {
-    debug: false,              // whether we're showing debug messages
+    debug: true,              // whether we're showing debug messages
     timeout:3000              // Can be overriden by a parameter
 };
 
@@ -49,6 +49,7 @@ exports.check = function(jobinfo, retryipv6){
         var receiveddata = false,
         spawn = childprocess.spawn,
         killit = false;
+        var pingdata = '';
         try{
            
             var timeoutid = setTimeout(function() {
@@ -72,8 +73,7 @@ exports.check = function(jobinfo, retryipv6){
             var pingo  = spawn( ping, ['-n', '-c1', '-W', timeout/1000, jobinfo.parameters.target]);
 
             pingo.stdout.on('data', function (data) {
-                if(receiveddata || killit){
-                    killit = true;
+                if (killit) {
                     // Nothing to do here.
                     //debugMessage('info','check_ping: Receiving another "on" "data" ' + sys.inspect(data));
                     if(pingo){
@@ -82,46 +82,7 @@ exports.check = function(jobinfo, retryipv6){
                     }
                     return true;
                 }else{
-                    receiveddata = true;
-                    killit = true;
-                    jobinfo.results.end = new Date().getTime();
-                    jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
-                    var lines = data.toString().split("\n");
-                    var patt1=/([0-9]+[\.][0-9]+[\.][0-9]+[\.][0-9]+)/g;
-                    var ip = lines[0].match(patt1);
-                    if(ip && ip.length == 1){
-                        ip =  ip[0];
-                        jobinfo.results.message = ip;
-                    }else{
-                        jobinfo.results.message = data.toString();
-                    }
-                    //debugMessage('info','check_ping: Ping: IP is ' + sys.inspect(ip));
-                    var patt2=/[0-9]+[0-9\.][0-9]+ ms/g;
-                    var latency = lines[1].match(patt2);
-                    //debugMessage('info','check_ping: Ping: line 1 is ' + sys.inspect(lines[1]));
-                    if(latency && latency.length == 1){
-                        latency =  parseFloat(latency[0].replace(' ms', ''));
-                        //debugMessage('info','check_ping: Ping: latency is ' + sys.inspect(latency));
-                        if(latency){
-                            latency = parseFloat(latency.toFixed(2));
-                            jobinfo.results.statusCode = latency;
-                            jobinfo.results.runtime = latency;
-                            jobinfo.results.success = true;
-                        }else{
-                            jobinfo.results.statusCode = 'error';
-                            jobinfo.results.success = false;
-                            jobinfo.results.message = 'Error';
-                        }
-                    }else{
-                        jobinfo.results.statusCode = 'timeout';
-                        jobinfo.results.success = false;
-                        jobinfo.results.message = 'Timeout';
-                    }
-                    resultobj.process(jobinfo);
-                    //debugMessage('info','check_ping: Ping: latency below is ' + sys.inspect(latency));
-                    pingo.kill('SIGKILL');
-                    pingo = null;
-                    return true;
+                    pingdata = pingdata + data.toString();
                 }
             });
 
@@ -150,6 +111,50 @@ exports.check = function(jobinfo, retryipv6){
                     }
                 }
                 return true;
+            });
+
+            pingo.on('close', function(code) {
+                debugMessage('info',"check_ping: close: "+code);
+                if (!killit) {
+                    killit = true;
+                    jobinfo.results.end = new Date().getTime();
+                    jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
+                    var lines = pingdata.toString().split("\n");
+                    var patt1=/([0-9]+[\.][0-9]+[\.][0-9]+[\.][0-9]+)/g;
+                    var ip = lines[0].match(patt1);
+                    if(ip && ip.length == 1){
+                        ip =  ip[0];
+                        jobinfo.results.message = ip;
+                    }else{
+                        jobinfo.results.message = pingdata.toString();
+                    }
+                    //debugMessage('info','check_ping: Ping: IP is ' + sys.inspect(ip));
+                    var patt2=/[0-9]+[0-9\.][0-9]+ ms/g;
+                    var latency = lines[1].match(patt2);
+                    //debugMessage('info','check_ping: Ping: line 1 is ' + sys.inspect(lines[1]));
+                    if(latency && latency.length == 1){
+                        latency =  parseFloat(latency[0].replace(' ms', ''));
+                        //debugMessage('info','check_ping: Ping: latency is ' + sys.inspect(latency));
+                        if(latency){
+                            latency = parseFloat(latency.toFixed(2));
+                            jobinfo.results.statusCode = latency;
+                            jobinfo.results.runtime = latency;
+                            jobinfo.results.success = true;
+                        }else{
+                            jobinfo.results.statusCode = 'error';
+                            jobinfo.results.success = false;
+                            jobinfo.results.message = 'Error';
+                        }
+                    }else{
+                        jobinfo.results.statusCode = 'timeout';
+                        jobinfo.results.success = false;
+                        jobinfo.results.message = 'Timeout';
+                    }
+                    resultobj.process(jobinfo);
+                    //debugMessage('info','check_ping: Ping: latency below is ' + sys.inspect(latency));
+                    pingo = null;
+                    return true;
+                }
             });
         }catch(errr){
             if (!killit){
