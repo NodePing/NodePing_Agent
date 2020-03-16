@@ -12,7 +12,7 @@
  *  static config.
  **/
 var config = {
-    debug: true,              // whether we're showing debug messages
+    debug: false,              // whether we're showing debug messages
     timeout:3000              // Can be overriden by a parameter
 };
 
