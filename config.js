@@ -8,7 +8,7 @@ var config = {
     "NodePingAgent_logpath": "/home/youruser/NodePing_Agent/log/NodePingAgent.log",
     "heartbeathandler": {
         "host": "push.nodeping.com",
-        "port": "8000",
+        "port": "443",
         "path": "/",
         "name": "NodePingPush"
     },
