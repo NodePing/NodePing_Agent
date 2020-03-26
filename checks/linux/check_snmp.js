@@ -82,11 +82,9 @@ exports.check = function(jobinfo){
         if (jobinfo.parameters.port){
             port = jobinfo.parameters.port;
         }
+        var community = jobinfo.parameters.snmpcom || 'public';
         var options = {version:version,timeout:timeout,retries:0,port:port};
-        if(jobinfo.parameters.snmpcom){
-            options.community = jobinfo.parameters.snmpcom;
-        }
-        debugMessage('info',"check_snmp: target:"+jobinfo.parameters.target+" with options: "+sys.inspect(options)+" and oids are: "+sys.inspect(oidsToSend));
+        debugMessage('info',"check_snmp: target:"+jobinfo.parameters.target+" and community: "+community+" with options: "+sys.inspect(options)+" and oids are: "+sys.inspect(oidsToSend));
         
         var killit = false;
         var timeoutid = setTimeout(function() {
@@ -99,16 +97,16 @@ exports.check = function(jobinfo){
             jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
             jobinfo.results.statusCode = 'Timeout';
             jobinfo.results.success = false;
-            jobinfo.results.message = 'Timeout';
+            jobinfo.results.message = 'Timeout timer';
             resultobj.process(jobinfo);
             session.close();
             return true;
         }, timeout);
 
         try{
-            var session = snmp.createSession (jobinfo.parameters.target, options);
+            var session = snmp.createSession (jobinfo.parameters.target, community, options);
             session.get (oidsToSend, function (error, varbinds) {
-                //debugMessage('info',"check_snmp: get callback: "+sys.inspect(varbinds)+' and error: '+sys.inspect(error)+' and session: '+sys.inspect(session,{depth:7}));
+                debugMessage('info',"check_snmp: get callback: "+sys.inspect(varbinds)+' and error: '+sys.inspect(error));
                 if(!killit){
                     clearTimeout(timeoutid);
                     killit = true;
@@ -191,8 +189,8 @@ exports.check = function(jobinfo){
                         //debugMessage('info','check_snmp: processing: '+sys.inspect(jobinfo));
                         resultobj.process(jobinfo);
                     }
+                    session.close();
                 }
-                session.close();
                 return false;
             });
             session.on("error", function(e){
