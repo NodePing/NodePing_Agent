@@ -12,6 +12,10 @@ var config = {
         "path": "/",
         "name": "NodePingPush"
     },
+    "diagnosticserver": {
+        "host": "diag.nodeping.com",
+        "port": "3030"
+    },
     "plugins": {},
     "checklist": {}
 };

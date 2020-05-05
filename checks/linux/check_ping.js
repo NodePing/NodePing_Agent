@@ -23,7 +23,7 @@ var childprocess = require('child_process');
 
 var logger = console;
 
-exports.check = function(jobinfo, retryipv6){
+exports.check = function(jobinfo, retryipv6, cb) {
     //debug('info',"Jobinfo passed to ping check: "+sys.inspect(jobinfo));
     //if(jobinfo.parameters.threshold) config.timeout = jobinfo.parameters.threshold;
     var timeout = config.timeout * 1;
@@ -38,7 +38,7 @@ exports.check = function(jobinfo, retryipv6){
         jobinfo.results.success = false;
         jobinfo.results.statusCode = 'error';
         jobinfo.results.message = 'Invalid target';
-        resultobj.process(jobinfo, true);
+        processresults(jobinfo,true);
         return true;
     } else {
         //debugMessage('info',"check_ping: retryipv6:"+sys.inspect(retryipv6));
@@ -67,7 +67,7 @@ exports.check = function(jobinfo, retryipv6){
                 jobinfo.results.statusCode = 'Timeout';
                 jobinfo.results.success = false;
                 jobinfo.results.message = 'Timeout';
-                resultobj.process(jobinfo);
+                processresults(jobinfo,false,cb);
                 return true;
             }, timeout);
             var pingo  = spawn( ping, ['-n', '-c1', '-W', timeout/1000, jobinfo.parameters.target]);
@@ -104,7 +104,7 @@ exports.check = function(jobinfo, retryipv6){
                     jobinfo.results.statusCode = 'error';
                     jobinfo.results.success = false;
                     jobinfo.results.message = data.toString();
-                    resultobj.process(jobinfo);
+                    processresults(jobinfo,false,cb);
                     if(pingo){
                         pingo.kill('SIGKILL');
                         pingo = null;
@@ -150,7 +150,7 @@ exports.check = function(jobinfo, retryipv6){
                         jobinfo.results.success = false;
                         jobinfo.results.message = 'Timeout';
                     }
-                    resultobj.process(jobinfo);
+                    processresults(jobinfo,false,cb);
                     //debugMessage('info','check_ping: Ping: latency below is ' + sys.inspect(latency));
                     pingo = null;
                     return true;
@@ -171,7 +171,7 @@ exports.check = function(jobinfo, retryipv6){
                 jobinfo.results.success = false;
                 jobinfo.results.statusCode = 'error';
                 jobinfo.results.message = errr.toString();
-                resultobj.process(jobinfo);
+                processresults(jobinfo,false,cb);
             }
             return true;
         }
@@ -181,6 +181,15 @@ exports.check = function(jobinfo, retryipv6){
         if(jobinfo.debug){
             logger.log(messageType,message);
         }
+    }
+    return true;
+};
+
+var processresults = function(jobinfo,finalize,cb) {
+    if (cb) {
+        cb (jobinfo); // For diagnostics
+    } else {
+        resultobj.process(jobinfo, true);
     }
     return true;
 };

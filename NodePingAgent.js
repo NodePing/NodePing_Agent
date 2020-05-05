@@ -34,7 +34,7 @@ var util = require('util'),
     checksToRun = [];
 
 process.on('uncaughtException', function (err) {
-    console.log(new Date().toISOString(),'Error: NodePingAgent process error: ',err);
+    console.log(new Date().toISOString(),'Error: NodePingAgent process error:',err);
     //process.exit(1);
 });
 
