@@ -33,7 +33,7 @@ if (!config.check_id || !config.check_token || config.check_id === '<Your NodePi
 }
 
 var heartbeat = function() {
-    console.log(new Date().toISOString(),'Heartbeat from server (ping)');
+    console.log(new Date().toISOString(),'Heartbeat ping from the diagnostics server - responding with pong');
     clearTimeout(pingTimeout);
 
     pingTimeout = setTimeout( function(){
@@ -77,8 +77,7 @@ var connectToServer = function() {
     });
 
     ws.on('message', function incoming(data) {
-        console.log(new Date().toISOString(),'Received message',data);
-        heartbeat();
+        console.log(new Date().toISOString(),'Receiving request from diagnostics server');
         processMessage(data);
     });
 
@@ -87,8 +86,10 @@ var connectToServer = function() {
 
 var send = function(payload) {
     var payload = JSON.stringify(payload);
-    console.log(new Date().toISOString(),'Sending payload',payload);
-    ws.send(payload);
+    console.log(new Date().toISOString(),'Sending data to diagnostics server');
+    ws.send(payload, function(){
+        console.log(new Date().toISOString(),'Data sent');
+    });
 }
 
 var parseData = function(data) {
@@ -101,9 +102,9 @@ var parseData = function(data) {
 }
 
 var processMessage = function (data) {
-    console.log(new Date().toISOString(),'processing message',data);
+    //console.log(new Date().toISOString(),'processing message',data);
     var data = parseData(data);
-    console.log(new Date().toISOString(),'processing parsed message',data);
+    //console.log(new Date().toISOString(),'processing parsed message',data);
     if (data.shutdown) {
         console.log(new Date().toISOString(),'Server is telling me to shutdown because:',data.message);
         console.log(new Date().toISOString(),'Shutting down');
@@ -123,33 +124,33 @@ var processMessage = function (data) {
 
 var tools = {
     mtr: function(data) {
-        console.log(new Date().toISOString(),'Going to run MTR');
+        console.log(new Date().toISOString(),'Running mtr');
         mtr.diagRun(data, function(reply) {
-            console.log(new Date().toISOString(),'reply from mtr:',reply);
+            console.log(new Date().toISOString(),'mtr results:',reply);
             data.results = reply;
             send({action:'diagResults',data:data});
         });
     },
     ping: function(data) {
-        console.log(new Date().toISOString(),'Going to run PING');
+        console.log(new Date().toISOString(),'Running ping');
         pingo.diagRun(data, function(reply) {
-            console.log(new Date().toISOString(),'reply from ping:',reply);
+            console.log(new Date().toISOString(),'ping results:',reply);
             data.results = reply;
             send({action:'diagResults',data:data});
         });
     },
     traceroute: function(data) {
-        console.log(new Date().toISOString(),'Going to run traceroute');
+        console.log(new Date().toISOString(),'Running traceroute');
         traceroute.diagRun(data, function(reply) {
-            console.log(new Date().toISOString(),'reply from traceroute:',reply);
+            console.log(new Date().toISOString(),'traceroute results:',reply);
             data.results = reply;
             send({action:'diagResults',data:data});
         });
     },
     dig: function(data) {
-        console.log(new Date().toISOString(),'Going to run dig');
+        console.log(new Date().toISOString(),'Running dig');
         dig.diagRun(data, function(reply) {
-            console.log(new Date().toISOString(),'reply from dig:',reply);
+            console.log(new Date().toISOString(),'dig results:',reply);
             data.results = reply;
             send({action:'diagResults',data:data});
         });
