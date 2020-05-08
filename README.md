@@ -1,6 +1,6 @@
 # NodePing AGENT software
 
-Software to run a **NodePing** AGENT check on Linux devices. It has been tested on Ubuntu and Raspian and requires node.js v10 or higher.
+Software to run a **NodePing** AGENT check on Linux devices. It has been tested on Ubuntu and Raspian and requires node.js v10 or higher. It can optionally provide the diagnostics client if you'd like to run diagnostics from NodePing's UI or API on your AGENT.
 
 ## NodePing AGENT checks
 
@@ -126,6 +126,20 @@ To completely remove the AGENT software and its log files:
 ```
 
 This removes the entire NodePing_Agent directory and the crontab line.
+
+## Diagnostics
+
+If you would like to run on-demand diagnostics on your AGENT, you'll need to start up the diagnostics client software. It's separate from the AGENT cron run.
+
+The diagnostics client is a node.js script that uses websockets to connect to NodePing's diagnostics servers (on port 3030) to provide immediate diagnostics on your AGENT.
+
+You can start the diagnostics client on command line with:
+
+``` sh
+~/NodePing_Agent$ node DiagnosticsClient.js >>log/DiagnosticsClient.log 2>&1 &
+```
+
+Diagnostics can be run from the NodePing web UI <https://nodeping.com/> - Diagnostic Tools tab (choose your AGENT check in the location dropdown) or via the API <https://nodeping.com/docs-api-diagnostics.html> - specify your AGENT check ID as the location.
 
 ## Support
 
