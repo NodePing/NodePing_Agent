@@ -413,14 +413,31 @@ var check = function(jobinfo){
                         } 
                         // Check headers
                         if (receiveheaders) {
+                            //debugMessage('info',"check_httpadv: received headers: "+sys.inspect(res.headers));
+                            //debugMessage('info',"check_httpadv: headers I'm looking for: "+sys.inspect(receiveheaders));
                             for (var head in receiveheaders) {
+                                //debugMessage('info',"check_httpadv: Looking for header: "+sys.inspect(head));
                                 var headLowered = head.toLowerCase();
+                                //debugMessage('info',"check_httpadv: Looking for header: "+sys.inspect(headLowered));
+                                //debugMessage('info',"check_httpadv: type for "+sys.inspect(res.headers[headLowered])+": "+nputil.gettype(res.headers[headLowered]));
                                 if (!res.headers[headLowered]) {
                                     jobinfo.results.success = false;
                                     jobinfo.results.message += ' HTTP header missing: '+head+'. ';
-                                } else if (res.headers[headLowered].toLowerCase() !== receiveheaders[head].toLowerCase()) {
-                                    jobinfo.results.success = false;
-                                    jobinfo.results.message += ' HTTP header '+head+' mismatch: '+res.headers[headLowered]+'. ';
+                                } else if (nputil.gettype(res.headers[headLowered]) === 'string') {
+                                    if (res.headers[headLowered].toLowerCase() !== receiveheaders[head].toLowerCase()) {
+                                        jobinfo.results.success = false;
+                                        jobinfo.results.message += ' HTTP header '+head+' mismatch: '+res.headers[headLowered]+'. ';
+                                    }
+                                } else {
+                                    if (nputil.gettype(res.headers[headLowered]) === 'array' && res.headers[headLowered][0]) {
+                                        if (res.headers[headLowered][0].toLowerCase() !== receiveheaders[head].toLowerCase()) {
+                                            jobinfo.results.success = false;
+                                            jobinfo.results.message += ' HTTP header '+head+' mismatch: '+res.headers[headLowered]+'. ';
+                                        }
+                                    } else {
+                                        jobinfo.results.success = false;
+                                        jobinfo.results.message += ' HTTP header '+head+' mismatch: '+sys.inspect(res.headers[headLowered])+'. ';
+                                    }
                                 }
                             }
                             if (!jobinfo.results.success) {
