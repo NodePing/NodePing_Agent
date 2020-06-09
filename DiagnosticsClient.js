@@ -16,6 +16,8 @@ var pingo = require('./diagnostics/ping.js');
 var mtr = require('./diagnostics/mtr.js');
 var traceroute = require('./diagnostics/traceroute.js');
 var dig = require('./diagnostics/dig.js');
+var ws;
+var runningTool = 0;
 
 if (!config.NodePingAgent_enabled) {
     console.log(new Date().toISOString(),'Check is disabled in config.js - shutting down');
@@ -84,11 +86,15 @@ var connectToServer = function() {
     ws.on('ping', heartbeat);
 };
 
-var send = function(payload) {
+var send = function(payload, cb) {
+    if (!cb) {
+        cb = function(){};
+    }
     var payload = JSON.stringify(payload);
     console.log(new Date().toISOString(),'Sending data to diagnostics server');
     ws.send(payload, function(){
         console.log(new Date().toISOString(),'Data sent');
+        return cb();
     });
 }
 
@@ -113,6 +119,7 @@ var processMessage = function (data) {
     }
     if (data.tool && tools.hasOwnProperty(data.tool)) {
         console.log(new Date().toISOString(),'Going to run',data.tool,'on:',data);
+        runningTool++;
         return tools[data.tool](data);
     } else {
         console.log(new Date().toISOString(),'Unknown test tool',data.tool,'for:',data);
@@ -128,7 +135,9 @@ var tools = {
         mtr.diagRun(data, function(reply) {
             console.log(new Date().toISOString(),'mtr results:',reply);
             data.results = reply;
-            send({action:'diagResults',data:data});
+            send({action:'diagResults',data:data},function(){
+                runningTool--;
+            });
         });
     },
     ping: function(data) {
@@ -136,7 +145,9 @@ var tools = {
         pingo.diagRun(data, function(reply) {
             console.log(new Date().toISOString(),'ping results:',reply);
             data.results = reply;
-            send({action:'diagResults',data:data});
+            send({action:'diagResults',data:data},function(){
+                runningTool--;
+            });
         });
     },
     traceroute: function(data) {
@@ -144,7 +155,9 @@ var tools = {
         traceroute.diagRun(data, function(reply) {
             console.log(new Date().toISOString(),'traceroute results:',reply);
             data.results = reply;
-            send({action:'diagResults',data:data});
+            send({action:'diagResults',data:data},function(){
+                runningTool--;
+            });
         });
     },
     dig: function(data) {
@@ -152,9 +165,32 @@ var tools = {
         dig.diagRun(data, function(reply) {
             console.log(new Date().toISOString(),'dig results:',reply);
             data.results = reply;
-            send({action:'diagResults',data:data});
+            send({action:'diagResults',data:data},function(){
+                runningTool--;
+            });
         });
     }
 };
 
+var restartWSConnection = function(retry) {
+    retry = retry || 0;
+    if (retry > 10) {
+        console.log(new Date().toISOString(),'Restarting websocket connection after max retry');
+        ws.close();
+    } else {
+        if (runningTool) {
+            console.log(new Date().toISOString(),'Tool running - waiting to restart websocket connection.');
+            retry++;
+            setTimeout(function(){
+                restartWSConnection(retry);
+            },30000);
+        } else {
+            console.log(new Date().toISOString(),'Restarting websocket connection');
+            ws.close();
+        }
+    }
+    return true;
+};
+
+setInterval(restartWSConnection,3600000); // restart the websocket connection each hour.
 startClient();

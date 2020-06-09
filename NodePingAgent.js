@@ -119,7 +119,7 @@ var postHeartbeat = function(data, retries) {
             var timeoutid = setTimeout(function() {
                 if (!completed) {
                     completed = true;
-                    if (retries > 10) {
+                    if (retries > 4) {
                         console.log(new Date().toISOString(),'Error: NodePingAgent: failed to post data to NodePing');
                     } else {
                         retries++;
@@ -194,7 +194,7 @@ var postHeartbeat = function(data, retries) {
                         if (body.config) {
                             updateConfig(body.config);
                         }
-                        if (retries > 10) {
+                        if (retries > 4) {
                             console.log(new Date().toISOString(),'Error: NodePingAgent: failed to post heartbeat to NodePing:',body);
                             return false;
                         } else {
@@ -221,7 +221,7 @@ var postHeartbeat = function(data, retries) {
                 clearTimeout(timeoutid);
                 if (!completed) {
                     completed = true;
-                    if (retries > 10) {
+                    if (retries > 4) {
                         console.log(new Date().toISOString(),'Error: NodePingAgent: failed to post data to NodePing: error:',e);
                     } else {
                         retries++;
@@ -238,7 +238,7 @@ var postHeartbeat = function(data, retries) {
                 clearTimeout(timeoutid);
                 if (!completed) {
                     completed = true;
-                    if (retries > 10) {
+                    if (retries > 4) {
                         console.log(new Date().toISOString(),'Error: NodePingAgent: failed to post data to NodePing: timeout');
                     } else {
                         retries++;
@@ -263,7 +263,7 @@ var postHeartbeat = function(data, retries) {
         console.log(new Date().toISOString(),'Error: NodePingAgent error: Post to NodePing error: ',connerror);
         if (!completed) {
             completed = true;
-            if (retries > 10) {
+            if (retries > 4) {
                 console.log(new Date().toISOString(),'Error: NodePingAgent: failed to post data to NodePing');
             } else {
                 retries++;
