@@ -26,7 +26,7 @@ var zlib = require('zlib');
 var dns = require('dns');
 var net = require('net');
 
-var check = function(jobinfo){
+var check = function(jobinfo, retry){
 //logger.log('info',"check_httpadv: jobinfo: "+sys.inspect(jobinfo));
     var defaulttimeout = config.timeout * 1;
     var timeout = config.timeout * 1;
@@ -41,6 +41,9 @@ var check = function(jobinfo){
         }
     };
     debugMessage('info',"check_httpadvanced: Jobinfo passed to http advanced check: "+sys.inspect(jobinfo));
+    if (!retry && jobinfo.targetip) {
+        delete jobinfo.targetip;
+    }
     jobinfo.results = {start:new Date().getTime()};
     if (jobinfo.redirectstart) {
         // Set start from before the redirect
@@ -63,6 +66,7 @@ var check = function(jobinfo){
 
     var receiveheaders = false;
     if (jobinfo.parameters.receiveheaders && typeof jobinfo.parameters.receiveheaders == 'object') {
+        //debugMessage('info',"check_httpadv: Setting receiveheaders to: "+sys.inspect(jobinfo.parameters.receiveheaders));
         receiveheaders = jobinfo.parameters.receiveheaders;
     }
 
@@ -103,41 +107,76 @@ var check = function(jobinfo){
             resultobj.process(jobinfo, true);
             return true;
         }
-        if (jobinfo.parameters.ipv6 && targetinfo.hostname){
-            if (!jobinfo.targetip) {
-                if (net.isIPv6(targetinfo.hostname)) {
-                    // No problem, already an IPv6
-                } else {
-                    dns.resolve6(targetinfo.hostname, function (err, addresses) {
+        var tryIpv6 =  function(){
+            jobinfo.dnsresolutionstart = new Date().getTime();
+            dns.resolve6(targetinfo.hostname, function (err, addresses) {
+                jobinfo.dnsresolutionend = new Date().getTime();
+                if (err) {
+                    jobinfo.results.success = false;
+                    jobinfo.results.end = new Date().getTime();jobinfo.results.end = new Date().getTime();
+                    jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
+                    jobinfo.results.statusCode = 'Error';
+                    jobinfo.results.message = 'Error resolving '+targetinfo.hostname;
+                    if (err.code === 'ENODATA') {
+                        jobinfo.results.message = 'No addresses found for '+targetinfo.hostname;
+                    } else if (err.code === 'ENOTFOUND') {
+                        jobinfo.results.message = 'No DNS resolution for '+targetinfo.hostname;
+                    }
+                    resultobj.process(jobinfo);
+                } else if(addresses && addresses[0]) {
+                    jobinfo.targetip = addresses[0];
+                    return check(jobinfo, true);
+                } else { // no resolution - empty array returned.
+                    jobinfo.results.success = false;
+                    jobinfo.results.end = new Date().getTime();
+                    jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
+                    jobinfo.results.statusCode = 'Error';
+                    jobinfo.results.message = 'No DNS addresses found for '+targetinfo.hostname;
+                    resultobj.process(jobinfo);
+                }
+                return true;
+            });
+            return true;
+        };
+        if (!jobinfo.targetip) {
+            if (jobinfo.parameters.ipv6) {
+                if (!net.isIPv6(targetinfo.hostname)) {
+                    return tryIpv6();
+                }
+            } else {
+                // Resolve the ipv4
+                if (!net.isIPv4(targetinfo.hostname) && !net.isIPv6(targetinfo.hostname)) {
+                    jobinfo.dnsresolutionstart = new Date().getTime();
+                    dns.resolve4(targetinfo.hostname, function (err, addresses) {
+                        jobinfo.dnsresolutionend = new Date().getTime();
                         if (err) {
-                            jobinfo.results.success = false;
-                            jobinfo.results.end = new Date().getTime();
-                            jobinfo.results.statusCode = 'Error';
-                            jobinfo.results.message = 'Error resolving IPv6 for '+targetinfo.hostname;
-                            if (err.code === 'ENODATA') {
-                                jobinfo.results.message = 'No IPv6 addresses found for '+targetinfo.hostname;
-                            } else if (err.code === 'ENOTFOUND') {
-                                jobinfo.results.message = 'No resolution for '+targetinfo.hostname;
+                            //logger.log('info','check_httpadv: resolution error: '+sys.inspect(err));
+                            //logger.log('info','check_httpadv: resolution addresses: '+sys.inspect(addresses));
+                            if (err.code === 'ENODATA' || err.code === 'ENOTFOUND') {
+                                return tryIpv6();
                             }
-                            resultobj.process(jobinfo);
-                        } else if(addresses && addresses[0]) {
-                            jobinfo.targetip = addresses[0];
-                            return check(jobinfo);
-                        } else { // no resolution - empty array returned.
                             jobinfo.results.success = false;
                             jobinfo.results.end = new Date().getTime();
+                            jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
                             jobinfo.results.statusCode = 'Error';
-                            jobinfo.results.message = 'No IPv6 addresses found for '+targetinfo.hostname;
+                            jobinfo.results.message = 'Error resolving the hostname: '+targetinfo.hostname;
                             resultobj.process(jobinfo);
+                        } else if(addresses && addresses.length && addresses[0]) {
+                            //logger.log('info','check_http: resolution addresses: '+sys.inspect(addresses));
+                            if (addresses[0]) {
+                                jobinfo.targetip = addresses[0];
+                                return check(jobinfo, true);
+                            }
+                        } else { // no ipv4 resolution - empty array returned.
+                            return tryIpv6();
                         }
                         return true;
                     });
+                    return true;
                 }
-                return true;
-            } else {
-                // We've already resolved this ip.
-                targetinfo.hostname = jobinfo.targetip;
             }
+        } else {
+            targetinfo.hostname = jobinfo.targetip;
         }
         var agent;
         if(targetinfo.protocol){
@@ -178,15 +217,19 @@ var check = function(jobinfo){
         }
         var sendheaderslower = {};
         for (var he in sendheaders) {
-            sendheaderslower[he.toLowerCase()] = he;
+            if (sendheaders[he]) {
+                sendheaderslower[he.toLowerCase()] = he;
+            }
         }
         if (headersToSend) {
             for (var h in headersToSend) {
-                var hlower = h.toLowerCase();
-                if (sendheaderslower[hlower]) {
-                    delete(sendheaders[sendheaderslower[hlower]]);
+                if (headersToSend[h]) {
+                    var hlower = h.toLowerCase();
+                    if (sendheaderslower[hlower]) {
+                        delete(sendheaders[sendheaderslower[hlower]]);
+                    }
+                    sendheaders[h] = headersToSend[h];
                 }
-                sendheaders[h] = headersToSend[h];
             }
         }
         debugMessage('info',"check_httpadv: headersToSend for "+jobinfo._id+": "+sys.inspect(headersToSend));
@@ -213,8 +256,10 @@ var check = function(jobinfo){
 
         targetinfo.agent = false;
         debugMessage('info',"check_httpadv: targetoptions for "+jobinfo._id+": "+sys.inspect(targetoptions));
+        debugMessage('info','check_httpadv: targetip is: '+sys.inspect(jobinfo.targetip));
         var killit = false;
         var lookForContent = function(jobinfo, body){
+            debugMessage('info',"check_httpadv: body returned is: "+sys.inspect(body));
             var foundit = false;
             if (jobinfo.parameters.regex) {
                 debugMessage('info',"check_httpadv: Looking for regex: "+jobinfo.parameters.contentstring);
@@ -362,6 +407,7 @@ var check = function(jobinfo){
                                 resultobj.process(jobinfo);
                                 return false;
                             } else {
+                                delete jobinfo.targetip;
                                 if (!jobinfo.redirectcount){
                                     jobinfo.redirectcount = 1;
                                 } else {
@@ -413,7 +459,7 @@ var check = function(jobinfo){
                         } 
                         // Check headers
                         if (receiveheaders) {
-                            //debugMessage('info',"check_httpadv: received headers: "+sys.inspect(res.headers));
+                            debugMessage('info',"check_httpadv: received headers: "+sys.inspect(res.headers));
                             //debugMessage('info',"check_httpadv: headers I'm looking for: "+sys.inspect(receiveheaders));
                             for (var head in receiveheaders) {
                                 //debugMessage('info',"check_httpadv: Looking for header: "+sys.inspect(head));
