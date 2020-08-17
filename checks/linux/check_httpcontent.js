@@ -24,28 +24,31 @@ var zlib = require('zlib');
 var dns = require('dns');
 var net = require('net');
 
-var check = function(jobinfo){
+var check = function(jobinfo, retry) {
 
     var defaulttimeout = config.timeout * 1;
     var timeout = config.timeout * 1;
-    if(jobinfo.parameters.threshold){
+    if (jobinfo.parameters.threshold) {
         defaulttimeout = 1000 * parseInt(jobinfo.parameters.threshold);
         if (defaulttimeout > 90000) defaulttimeout = 90000;
         timeout = defaulttimeout + 2000;
     }
     var debugMessage = function (messageType, message){
-        if(jobinfo.debug || config.debug){
+        if (jobinfo.debug || config.debug) {
             logger.log(messageType,message);
         }
     };
     debugMessage('info',"check_httpcontent: Jobinfo passed to http check: "+sys.inspect(jobinfo));
+    if (!retry && jobinfo.targetip) {
+        delete jobinfo.targetip;
+    }
     jobinfo.results = {start:new Date().getTime()};
     if (jobinfo.redirectstart) {
         // Set start from before the redirect
         jobinfo.results.start =  jobinfo.redirectstart;
     }
     
-    if(!jobinfo.parameters.target){
+    if (!jobinfo.parameters.target) {
         //logger.log('info',"check_httpcontent: Invalid URL");
         jobinfo.results.end = new Date().getTime();
         jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
@@ -54,11 +57,11 @@ var check = function(jobinfo){
         jobinfo.results.message = 'Invalid URL';
         resultobj.process(jobinfo, true);
         return true;
-    }else{
+    } else {
         var thetarget = jobinfo.redirecttarget || jobinfo.parameters.target;
-        try{
+        try {
             var targetinfo = url.parse(thetarget);
-        }catch(error){
+        } catch(error) {
             //logger.log('info',"check_httpcontent: Invalid URL");
             jobinfo.results.end = new Date().getTime();
             jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
@@ -68,51 +71,86 @@ var check = function(jobinfo){
             resultobj.process(jobinfo, true);
             return true;
         }
-        if (jobinfo.parameters.ipv6 && targetinfo.hostname){
-            if (!jobinfo.targetip) {
-                if (net.isIPv6(targetinfo.hostname)) {
-                    // No problem, already an IPv6
-                } else {
-                    dns.resolve6(targetinfo.hostname, function (err, addresses) {
+        var tryIpv6 =  function(){
+            jobinfo.dnsresolutionstart = new Date().getTime();
+            dns.resolve6(targetinfo.hostname, function (err, addresses) {
+                jobinfo.dnsresolutionend = new Date().getTime();
+                if (err) {
+                    jobinfo.results.success = false;
+                    jobinfo.results.end = new Date().getTime();jobinfo.results.end = new Date().getTime();
+                    jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
+                    jobinfo.results.statusCode = 'Error';
+                    jobinfo.results.message = 'Error resolving '+targetinfo.hostname;
+                    if (err.code === 'ENODATA') {
+                        jobinfo.results.message = 'No addresses found for '+targetinfo.hostname;
+                    } else if (err.code === 'ENOTFOUND') {
+                        jobinfo.results.message = 'No DNS resolution for '+targetinfo.hostname;
+                    }
+                    resultobj.process(jobinfo);
+                } else if(addresses && addresses[0]) {
+                    jobinfo.targetip = addresses[0];
+                    return check(jobinfo, true);
+                } else { // no resolution - empty array returned.
+                    jobinfo.results.success = false;
+                    jobinfo.results.end = new Date().getTime();
+                    jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
+                    jobinfo.results.statusCode = 'Error';
+                    jobinfo.results.message = 'No DNS addresses found for '+targetinfo.hostname;
+                    resultobj.process(jobinfo);
+                }
+                return true;
+            });
+            return true;
+        };
+        if (!jobinfo.targetip) {
+            if (jobinfo.parameters.ipv6) {
+                if (!net.isIPv6(targetinfo.hostname)) {
+                    return tryIpv6();
+                }
+            } else {
+                // Resolve the ipv4
+                if (!net.isIPv4(targetinfo.hostname) && !net.isIPv6(targetinfo.hostname)) {
+                    jobinfo.dnsresolutionstart = new Date().getTime();
+                    dns.resolve4(targetinfo.hostname, function (err, addresses) {
+                        jobinfo.dnsresolutionend = new Date().getTime();
                         if (err) {
-                            jobinfo.results.success = false;
-                            jobinfo.results.statusCode = 'Error';
-                            jobinfo.results.end = new Date().getTime();
-                            jobinfo.results.message = 'Error resolving IPv6 for '+targetinfo.hostname;
-                            if (err.code === 'ENODATA') {
-                                jobinfo.results.message = 'No IPv6 addresses found for '+targetinfo.hostname;
-                            } else if (err.code === 'ENOTFOUND') {
-                                jobinfo.results.message = 'No resolution for '+targetinfo.hostname;
+                            //logger.log('info','check_httpcontent: resolution error: '+sys.inspect(err));
+                            //logger.log('info','check_httpcontent: resolution addresses: '+sys.inspect(addresses));
+                            if (err.code === 'ENODATA' || err.code === 'ENOTFOUND') {
+                                return tryIpv6();
                             }
-                            resultobj.process(jobinfo);
-                        } else if(addresses && addresses[0]) {
-                            jobinfo.targetip = addresses[0];
-                            return check(jobinfo);
-                        } else { // no resolution - empty array returned.
                             jobinfo.results.success = false;
                             jobinfo.results.end = new Date().getTime();
+                            jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
                             jobinfo.results.statusCode = 'Error';
-                            jobinfo.results.message = 'No IPv6 addresses found for '+targetinfo.hostname;
+                            jobinfo.results.message = 'Error resolving the hostname: '+targetinfo.hostname;
                             resultobj.process(jobinfo);
+                        } else if(addresses && addresses.length && addresses[0]) {
+                            //logger.log('info','check_http: resolution addresses: '+sys.inspect(addresses));
+                            if (addresses[0]) {
+                                jobinfo.targetip = addresses[0];
+                                return check(jobinfo, true);
+                            }
+                        } else { // no ipv4 resolution - empty array returned.
+                            return tryIpv6();
                         }
                         return true;
                     });
+                    return true;
                 }
-                return true;
-            } else {
-                // We've already resolved this ip.
-                targetinfo.hostname = jobinfo.targetip;
             }
+        } else {
+            targetinfo.hostname = jobinfo.targetip;
         }
         var agent;
-        if(targetinfo.hasOwnProperty('protocol')){
-            if(targetinfo.protocol == 'http:'){
+        if (targetinfo.hasOwnProperty('protocol')) {
+            if (targetinfo.protocol == 'http:') {
                 agent = require('http');
                 //logger.log('info',"check_http: Using http");
-            }else if (targetinfo.protocol == 'https:'){
+            } else if (targetinfo.protocol == 'https:') {
                 agent = require('https');
                 //logger.log('info',"check_http: Using https");
-            }else{
+            } else {
                 //logger.log('info',"check_httpcontent: Invalid protocol: "+targetinfo.protocol);
                 jobinfo.results.end = new Date().getTime();
                 jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
@@ -122,12 +160,12 @@ var check = function(jobinfo){
                 resultobj.process(jobinfo, true);
                 return true;
             }
-        }else {
+        } else {
 			jobinfo.results.end = new Date().getTime();
 			jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
 			jobinfo.results.success = false;
 			jobinfo.results.statusCode = 'error';
-			jobinfo.results.message = 'Invalid URL';
+			jobinfo.results.message = 'Invalid or missing protocol for HTTP';
 			resultobj.process(jobinfo, true);
 			return true;
 		}
@@ -135,26 +173,27 @@ var check = function(jobinfo){
                            'User-Agent': 'NodePing',
                            'Host': targetinfo.host};
         // Auth
-        if(targetinfo.auth){
+        if (targetinfo.auth) {
             httpheaders.Authorization = 'Basic ' + new Buffer(targetinfo.auth).toString('base64');
         }
         var targetoptions = {host:targetinfo.hostname,
                              method:'GET',
                              headers: httpheaders,
                              rejectUnauthorized: false};
-        if(targetinfo.port){
+        if (targetinfo.port) {
             targetoptions.port = targetinfo.port;
+            targetoptions['Host'] = targetoptions['Host']+':'+targetinfo.port;
         }
-        if(targetinfo.pathname){
-            if(targetinfo.search){
+        if (targetinfo.pathname){ 
+            if (targetinfo.search) {
                 targetoptions.path = targetinfo.pathname+targetinfo.search;
-            }else{
+            } else {
                 targetoptions.path = targetinfo.pathname;
             }
         }
         targetinfo.agent = false;
-        //logger.log('info','check_httpcontent: Targetoptions is: '+sys.inspect(targetoptions));
-        //logger.log('info',"check_httpcontent: Url for job "+jobinfo._id+" is "+jobinfo.parameters.target);
+        debugMessage('info','check_http: targetip is: '+sys.inspect(jobinfo.targetip));
+        debugMessage('info','check_http: targetinfo hostname is: '+sys.inspect(targetinfo.hostname));
         var killit = false;
         var gotSocket = false;
         var lookForContent = function(jobinfo, body){
@@ -171,25 +210,25 @@ var check = function(jobinfo){
                     foundit = true;
                 }
             }
-            if(!foundit){
-                if(jobinfo.parameters.invert){
+            if (!foundit) {
+                if (jobinfo.parameters.invert) {
                     //logger.log('info','check_httpcontent: We found '+jobinfo.parameters.contentstring+' in the body of : '+jobinfo.parameters.target);
                     jobinfo.results.success = true;
                     jobinfo.results.message = 'Success';
                     resultobj.process(jobinfo);
-                }else{
+                } else {
                     //logger.log('info','check_httpcontent: We did not find '+jobinfo.parameters.contentstring+' in the body of : '+jobinfo.parameters.target);
                     jobinfo.results.success = false;
                     jobinfo.results.message = 'Not found';
                     resultobj.process(jobinfo);
                 }
-            }else{
+            } else {
                 debugMessage('info',"check_httpcontent: found content or regex: "+jobinfo.parameters.contentstring);
-                if(jobinfo.parameters.invert){
+                if (jobinfo.parameters.invert) {
                     jobinfo.results.success = false;
                     jobinfo.results.message = 'Found';
                     resultobj.process(jobinfo);
-                }else{
+                } else {
                     //logger.log('info','check_httpcontent: We found '+jobinfo.parameters.contentstring+' in the body of : '+jobinfo.parameters.target);
                     jobinfo.results.success = true;
                     jobinfo.results.message = 'Success';
@@ -200,7 +239,7 @@ var check = function(jobinfo){
         };
         try{
             var timeoutid = setTimeout(function() {
-                if(killit){
+                if (killit) {
                     return true;
                 }
                 killit = true;
@@ -212,10 +251,9 @@ var check = function(jobinfo){
                 jobinfo.results.success = false;
                 jobinfo.results.message = 'Timeout';
                 resultobj.process(jobinfo);
-
                 return true;
             }, timeout);
-            var req = agent.request(targetoptions, function(res){
+            var req = agent.request(targetoptions, function(res) {
                 var body = '';
                 var chunks = [];
                 //logger.log('info','check_httpcontent: res inside is: '+sys.inspect(res));
@@ -226,11 +264,11 @@ var check = function(jobinfo){
                 res.on('data', function(d) {
                     //logger.log('info',"check_httpcontent: Data inside is "+sys.inspect(d));
                     body += d.toString('utf8');
-                    if (res.headers['content-encoding'] && (res.headers['content-encoding'] === 'gzip' || res.headers['content-encoding'] === 'deflate')){
+                    if (res.headers['content-encoding'] && (res.headers['content-encoding'] === 'gzip' || res.headers['content-encoding'] === 'deflate')) {
                         // Save these buffer chunks for later in case we need to decompress the reply.
                         chunks.push(d);
                     }
-                    if(body.length > 3145728){// 3MB limit
+                    if (body.length > 3145728) {// 3MB limit
                         clearTimeout(timeoutid);
                         killit = true;
                         //logger.log('info','check_httpcontent: Response has ended and total body is: '+sys.inspect(body));
@@ -244,8 +282,8 @@ var check = function(jobinfo){
                         return true;
                     }
                 });
-                res.on('end', function(){
-                    if(!killit){
+                res.on('end', function() {
+                    if (!killit) {
                         clearTimeout(timeoutid);
                         killit = true;
                         //logger.log('info','check_httpcontent: Response has ended and total body is: '+sys.inspect(body));
@@ -259,7 +297,7 @@ var check = function(jobinfo){
                                                     httpserverip:req.connection.remoteAddress}
                                                };
                         debugMessage('info','Diag: '+sys.inspect(jobinfo.results.diag));
-                        if(jobinfo.parameters.follow && res.statusCode >=300 && res.statusCode < 399){
+                        if (jobinfo.parameters.follow && res.statusCode >=300 && res.statusCode < 399) {
                         // Have we redirected too many times already?
                             if (jobinfo.redirectcount && jobinfo.redirectcount > 4) {
                                 // Too many redirects.
@@ -269,7 +307,8 @@ var check = function(jobinfo){
                                 resultobj.process(jobinfo);
                                 return false;
                             } else {
-                                if (!jobinfo.redirectcount){
+                                delete jobinfo.targetip;
+                                if (!jobinfo.redirectcount) {
                                     jobinfo.redirectcount = 1;
                                 } else {
                                     jobinfo.redirectcount = jobinfo.redirectcount + 1;
@@ -286,7 +325,7 @@ var check = function(jobinfo){
                                     if (redirect.indexOf('/') === 0) {
                                         // Replace the whole pathname
                                         var toreplace = targetinfo.pathname;
-                                        if (targetinfo.search){
+                                        if (targetinfo.search) {
                                             toreplace = toreplace + targetinfo.search;
                                         }
                                         debugMessage('info',"check_httpcontent: Going to replace: "+sys.inspect(toreplace)+" with "+sys.inspect(redirect));
@@ -298,7 +337,7 @@ var check = function(jobinfo){
                                         }
                                     } else {
                                         // tack this redirect on the end of the current path - removing the search, if any.
-                                        if (targetinfo.pathname.slice(-1) !== '/'){
+                                        if (targetinfo.pathname.slice(-1) !== '/') {
                                             // strip off the last filename if any.
                                             var pos = targetinfo.href.lastIndexOf('/');
                                             if (pos > 7) {
@@ -317,16 +356,16 @@ var check = function(jobinfo){
                                 req.abort();
                                 return check(jobinfo);
                             }
-                        } else if(res.statusCode >=200 && res.statusCode < 399){
+                        } else if (res.statusCode >=200 && res.statusCode < 399) {
                             // Did it take too long?
-                            if(defaulttimeout < jobinfo.results.runtime){
+                            if (defaulttimeout < jobinfo.results.runtime) {
                                 //logger.log('info','check_httpcontent: Timeout: '+sys.inspect(defaulttimeout)+" is less than "+sys.inspect(jobinfo.results.runtime));
                                 jobinfo.results.success = false;
                                 jobinfo.results.message = 'Timeout';
                                 jobinfo.results.statusCode = 'Timeout';
                                 resultobj.process(jobinfo);
                                 return true;
-                            }else if(jobinfo.parameters.contentstring){
+                            } else if (jobinfo.parameters.contentstring) {
                                 if (res.headers['content-encoding'] === 'gzip') {
                                     body = false;
                                     var buffer = Buffer.concat(chunks);
@@ -359,14 +398,14 @@ var check = function(jobinfo){
                                     lookForContent(jobinfo, body);
                                 }
                                 return true;
-                            }else{
+                            } else {
                                 // no content string to look for, we'll just say we connected.
                                 jobinfo.results.success = true;
                                 jobinfo.results.message = 'Success';
                                 resultobj.process(jobinfo);
                                 return true;
                             }
-                        }else{
+                        } else {
                             // Status code out of range.
                             jobinfo.results.success = false;
                             jobinfo.results.message = 'HTTP status returned: '+res.statusCode;
@@ -378,9 +417,9 @@ var check = function(jobinfo){
                 });
                 return true;
             });
-            req.on("error", function(e){
+            req.on("error", function(e) {
                 clearTimeout(timeoutid);
-                if(!killit){
+                if (!killit) {
                     killit = true;
                     jobinfo.results.end = new Date().getTime();
                     jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
@@ -390,9 +429,9 @@ var check = function(jobinfo){
                     resultobj.process(jobinfo);
                 }
                 return true;
-            }).on("timeout", function(to){
+            }).on("timeout", function(to) {
                 clearTimeout(timeoutid);
-                if(!killit){
+                if (!killit) {
                     killit = true;
                     logger.log('info',"check_httpcontent: Caught timeout: socket: "+sys.inspect(gotSocket)+', jobid: '+sys.inspect(jobinfo._id));
                     jobinfo.results.end = new Date().getTime();
@@ -413,8 +452,8 @@ var check = function(jobinfo){
             req.end();
         }catch(ec){
             clearTimeout(timeoutid);
-            if(!killit){
-                if(req)req.destroy();
+            if (!killit) {
+                if (req) req.destroy();
                 jobinfo.results.end = new Date().getTime();
                 jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
                 jobinfo.results.statusCode = 'Error';
