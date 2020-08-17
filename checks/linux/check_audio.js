@@ -18,6 +18,7 @@ var config = {
 };
 
 var resultobj = require('../results.js');
+var url = require('url');
 var sys = require('util');
 var logger = console;
 var icy = require('icy');
@@ -31,24 +32,25 @@ exports.check = check = function(jobinfo){
         timeout = defaulttimeout + 2000;
     }
     //logger.log('info',"check_audio: Jobinfo passed to http stream check: "+sys.inspect(jobinfo));
-    if(jobinfo.debug) config.debug = jobinfo.debug;
+    if (jobinfo.debug) config.debug = jobinfo.debug;
     jobinfo.results = {start:new Date().getTime()};
-    if(!jobinfo.parameters.target){
+    if (!jobinfo.parameters.target) {
         logger.log('info',"check_audio: Invalid URL");
         jobinfo.results.success = false;
         jobinfo.results.statusCode = 'error';
         jobinfo.results.message = 'Invalid URL';
         resultobj.process(jobinfo, true);
         return true;
-    }else{
+    } else {
         if (!jobinfo.originaltarget) {
             jobinfo.originaltarget = jobinfo.parameters.target;
         }
-        try{
-            var targetinfo = require('url').parse(jobinfo.parameters.target);
+        try {
+            var thetarget = jobinfo.redirecttarget || jobinfo.parameters.target;
+            var targetinfo = url.parse(thetarget);
             targetinfo.headers = { 'user-agent': 'NodePing' };
             targetinfo.rejectUnauthorized = false;
-        }catch(error){
+        } catch (error) {
             logger.log('info',"check_audio: Invalid URL");
             jobinfo.results.success = false;
             jobinfo.results.statusCode = 'error';
@@ -72,11 +74,11 @@ exports.check = check = function(jobinfo){
 
         var killit = false;
         var timeoutid = setTimeout(function() {
-            if(killit){
+            if (killit) {
                 return true;
             }
             killit = true;
-            if(stream){
+            if (stream) {
                 stream.abort();
             }
             //logger.log('info',"check_audio: setTimeout called: "+timeout.toString());
@@ -88,7 +90,7 @@ exports.check = check = function(jobinfo){
             resultobj.process(jobinfo);
             return true;
         }, timeout);
-        try{
+        try {
             var stream = icy.get(targetinfo, function (res) {
                 res.on('data', function (data) {
                     if(stream){
@@ -102,9 +104,9 @@ exports.check = check = function(jobinfo){
                 //logger.log("info","Radio Stream connected at "+jobinfo.parameters.target);
             //});
 
-            stream.setTimeout(timeout-500, function(){
+            stream.setTimeout(timeout-500, function() {
                 if(killit){
-                return true;
+                    return true;
                 }
                 killit = true;
                 if(stream){
@@ -130,24 +132,82 @@ exports.check = check = function(jobinfo){
                 stream.abort();
                 jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
                 jobinfo.results.statusCode = res.statusCode;
-                if(res.statusCode >=200 && res.statusCode < 399){
+                if (res.statusCode >=300 && res.statusCode < 399) {
+                    // Have we redirected too many times already?
+                    if (jobinfo.redirectcount && jobinfo.redirectcount > 4) {
+                        // Too many redirects.
+                        jobinfo.results.success = false;
+                        jobinfo.results.message = 'Too many redirects';
+                        jobinfo.results.statusCode = res.statusCode;
+                        resultobj.process(jobinfo);
+                        return true;
+                    } else {
+                        if (!jobinfo.redirectcount) {
+                            jobinfo.redirectcount = 1;
+                        } else {
+                            jobinfo.redirectcount = jobinfo.redirectcount + 1;
+                        }
+                        // Set the new redirecttarget and try again.
+                        logger.log('info',"check_audio: redirect header says "+sys.inspect(res.headers.location));
+                        var redirect = res.headers.location;
+                        if (redirect.indexOf('https:') === 0 || redirect.indexOf('http:') === 0 || redirect.indexOf('HTTP:') === 0 || redirect.indexOf('HTTPS:') === 0) {
+                            // Absolute redirect.
+                        } else {
+                            // relative redirect - need to get the right base url (either parameters.target or a previous redirect target)
+                            thetarget = jobinfo.redirecttarget || jobinfo.parameters.target;
+                            targetinfo = url.parse(thetarget);
+                            if (redirect.indexOf('/') === 0) {
+                                // Replace the whole pathname
+                                var toreplace = targetinfo.pathname;
+                                if (targetinfo.search) {
+                                    toreplace = toreplace + targetinfo.search;
+                                }
+                                logger.log('info',"check_audio: Going to replace: "+sys.inspect(toreplace)+" with "+sys.inspect(redirect));
+                                var pos = targetinfo.href.lastIndexOf(toreplace);
+                                if (pos > 7) {
+                                    redirect = targetinfo.href.substring(0, pos) + redirect;
+                                } else {
+                                    logger.log('error',"check_audio: Weird placement for the last instance of: "+sys.inspect(toreplace)+" in "+sys.inspect(redirect)+' for check '+jobinfo.jobid);
+                                }
+                            } else {
+                                // tack this redirect on the end of the current path - removing the search, if any.
+                                if (targetinfo.pathname.slice(-1) !== '/') {
+                                    // strip off the last filename if any.
+                                    var pos = targetinfo.href.lastIndexOf('/');
+                                    if (pos > 7) {
+                                        targetinfo.href = targetinfo.href.substring(0, pos);
+                                    }
+                                    redirect = '/'+redirect;
+                                }
+                                if (targetinfo.search) {
+                                    targetinfo.href = targetinfo.href.replace(targetinfo.search,'');
+                                }
+                                redirect = targetinfo.href+redirect;
+                            }
+                        }
+                        jobinfo.redirecttarget = redirect;
+                        jobinfo.redirectstart = jobinfo.results.start; 
+                        stream.abort();
+                        return check(jobinfo);
+                    }
+                } else if (res.statusCode >=200 && res.statusCode < 399) {
                     // Did it take too long?
-                    if(defaulttimeout < jobinfo.results.runtime){
+                    if (defaulttimeout < jobinfo.results.runtime) {
                         //logger.log('info','check_audio: Timeout: '+sys.inspect(defaulttimeout)+" is less than "+sys.inspect(jobinfo.results.runtime));
                         jobinfo.results.success = false;
                         jobinfo.results.message = 'Responded but slower than configured threshold';
                         jobinfo.results.statusCode = 'Timeout';
 
-                    }else{
-                        if(res.headers && res.headers["content-type"]) {
-                            if (res.headers["content-type"].toLowerCase().indexOf("audio") > -1 || res.headers["content-type"].toLowerCase() === 'video/mp2t'){
+                    } else {
+                        if (res.headers && res.headers["content-type"]) {
+                            if (res.headers["content-type"].toLowerCase().indexOf("audio") > -1 || res.headers["content-type"].toLowerCase() === 'video/mp2t') {
                                 jobinfo.results.success = true;
                                 jobinfo.results.message = 'Success';
                                 if (jobinfo.parameters.verifyvolume) {
                                     // Dead air check
                                     return checkForDeadAir(jobinfo);
                                 }
-                            }else{
+                            } else {
                                 jobinfo.results.success = false;
                                 jobinfo.results.message = 'Invalid audio stream';
                                 
@@ -162,26 +222,26 @@ exports.check = check = function(jobinfo){
                             jobinfo.results.message = 'missing content-type header';
                         }
                     }
-                }else{
+                } else {
                     jobinfo.results.success = false;
-                    jobinfo.results.message = 'Failure';
+                    jobinfo.results.message = 'Bad HTTP response';
                     jobinfo.results.diag = {"http":{
                         responseheaders:res.headers,
                         httpstatus:res.statusCode,
                         httpserverip:remoteAddress}
                     };
                 }
-                if (jobinfo.originaltarget) if (jobinfo.originaltarget) jobinfo.parameters.target = jobinfo.originaltarget;
+                if (jobinfo.originaltarget) jobinfo.parameters.target = jobinfo.originaltarget;
                 resultobj.process(jobinfo);
                 return true;
             });
-            stream.on('error', function(error){
-                if(stream){
+            stream.on('error', function(error) {
+                if (stream) {
                     stream.abort();
                 }
                 logger.log("info","Audio Stream error from "+jobinfo.parameters.target+" : "+sys.inspect(error));
                 clearTimeout(timeoutid);
-                if(!killit){
+                if (!killit) {
                     killit = true;
                     jobinfo.results.end = new Date().getTime();
                     jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
@@ -194,10 +254,10 @@ exports.check = check = function(jobinfo){
                 return true;
             });
             return true;
-        }catch(ec){
+        } catch(ec) {
             clearTimeout(timeoutid);
-            if(!killit){
-                if(stream)stream.abort();
+            if (!killit) {
+                if (stream) stream.abort();
                 jobinfo.results.end = new Date().getTime();
                 jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
                 jobinfo.results.statusCode = 'Error';
@@ -257,7 +317,7 @@ var checkForDeadAir = function(jobinfo){
             if (jobinfo.originaltarget) jobinfo.parameters.target = jobinfo.originaltarget;
             resultobj.process(jobinfo);
         })
-        .on('error', function(err){
+        .on('error', function(err) {
             //logger.log("error",'Audio Stream: volume check "error" event: '+sys.inspect(err));
             jobinfo.results.statusCode = 'Error';
             jobinfo.results.success = false;
@@ -273,14 +333,14 @@ var processPlaylist = function(targetinfo, jobinfo, playlisttype) {
     //logger.log('info',"check_audio: processPlaylist targetinfo: "+sys.inspect(targetinfo));
     var agent;
     jobinfo.results = {start:new Date().getTime()};
-    if(targetinfo.hasOwnProperty('protocol')){
-        if(targetinfo.protocol == 'http:'){
+    if (targetinfo.hasOwnProperty('protocol')) {
+        if (targetinfo.protocol == 'http:') {
             agent = require('http');
             //logger.log('info',"check_audio: Using http");
-        }else if (targetinfo.protocol == 'https:'){
+        } else if (targetinfo.protocol == 'https:') {
             agent = require('https');
             //logger.log('info',"check_audio: Using https");
-        }else{
+        } else {
             //logger.log('info',"check_audio: Invalid protocol: "+targetinfo.protocol);
             jobinfo.results.end = new Date().getTime();
             jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
@@ -291,7 +351,7 @@ var processPlaylist = function(targetinfo, jobinfo, playlisttype) {
             resultobj.process(jobinfo, true);
             return true;
         }
-    }else {
+    } else {
         jobinfo.results.end = new Date().getTime();
         jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
         jobinfo.results.success = false;
@@ -307,14 +367,14 @@ var processPlaylist = function(targetinfo, jobinfo, playlisttype) {
     var gotSocket = false;
     var timeout = config.timeout * 1;
     var defaulttimeout = config.timeout * 1;
-    if(jobinfo.parameters.threshold){
+    if (jobinfo.parameters.threshold) {
         defaulttimeout = 1000 * parseInt(jobinfo.parameters.threshold);
         if (defaulttimeout > 90000) defaulttimeout = 90000;
         timeout = defaulttimeout + 2000;
     }
-    try{
+    try {
         var timeoutid = setTimeout(function() {
-            if(killit){
+            if (killit) {
                 return true;
             }
             killit = true;
@@ -327,10 +387,9 @@ var processPlaylist = function(targetinfo, jobinfo, playlisttype) {
             jobinfo.results.message = 'Timeout';
             if (jobinfo.originaltarget) jobinfo.parameters.target = jobinfo.originaltarget;
             resultobj.process(jobinfo);
-
             return true;
         }, timeout);
-        var req = agent.request(targetinfo, function(res){
+        var req = agent.request(targetinfo, function(res) {
             var body = '';
             //logger.log('info','check_audio: res inside is: '+sys.inspect(res));
             //res.setEncoding('utf8');
@@ -340,7 +399,7 @@ var processPlaylist = function(targetinfo, jobinfo, playlisttype) {
             res.on('data', function(d) {
                 //logger.log('info',"check_audio: Data inside is "+sys.inspect(d));
                 body += d.toString('utf8');
-                if(body.length > 3145728){// 3MB limit
+                if (body.length > 3145728) {// 3MB limit
                     clearTimeout(timeoutid);
                     killit = true;
                     //logger.log('info','check_audio: Response has ended and total body is: '+sys.inspect(body));
@@ -356,7 +415,7 @@ var processPlaylist = function(targetinfo, jobinfo, playlisttype) {
                 }
             });
             res.on('end', function(){
-                if(!killit){
+                if (!killit) {
                     clearTimeout(timeoutid);
                     killit = true;
                     jobinfo.results.end = new Date().getTime();
@@ -369,7 +428,7 @@ var processPlaylist = function(targetinfo, jobinfo, playlisttype) {
                                                 httpserverip:req.connection.remoteAddress}
                                            };
                     //logger.log('info','Diag: '+sys.inspect(jobinfo.results.diag));
-                    if(res.statusCode >=200 && res.statusCode < 399){
+                    if (res.statusCode >=200 && res.statusCode < 399) {
                         // Did it take too long?
                         if (defaulttimeout < jobinfo.results.runtime) {
                             //logger.log('info','check_audio: Timeout: '+sys.inspect(defaulttimeout)+" is less than "+sys.inspect(jobinfo.results.runtime));
@@ -445,7 +504,7 @@ var processPlaylist = function(targetinfo, jobinfo, playlisttype) {
         });
         req.on("error", function(e){
             clearTimeout(timeoutid);
-            if(!killit){
+            if (!killit) {
                 killit = true;
                 jobinfo.results.end = new Date().getTime();
                 jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
@@ -458,7 +517,7 @@ var processPlaylist = function(targetinfo, jobinfo, playlisttype) {
             return true;
         }).on("timeout", function(to){
             clearTimeout(timeoutid);
-            if(!killit){
+            if (!killit) {
                 killit = true;
                 logger.log('info',"check_audio: Caught timeout: socket: "+sys.inspect(gotSocket)+', jobid: '+sys.inspect(jobinfo._id));
                 jobinfo.results.end = new Date().getTime();
@@ -478,10 +537,10 @@ var processPlaylist = function(targetinfo, jobinfo, playlisttype) {
             socket.emit("agentRemove");
         });
         req.end();
-    }catch(ec){
+    } catch(ec) {
         clearTimeout(timeoutid);
-        if(!killit){
-            if(req)req.destroy();
+        if (!killit) {
+            if (req) req.destroy();
             jobinfo.results.end = new Date().getTime();
             jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
             jobinfo.results.statusCode = 'Error';
@@ -513,7 +572,7 @@ var buildResourceUrl = function (resource, targetinfo){
             }
         } else {
             // tack this redirect on the end of the current path - removing the search, if any.
-            if (targetinfo.pathname.slice(-1) !== '/'){
+            if (targetinfo.pathname.slice(-1) !== '/') {
                 // strip off the last filename if any.
                 var pos = targetinfo.href.lastIndexOf('/');
                 if (pos > 7) {
