@@ -23,89 +23,142 @@ var url = require('url');
 var dns = require('dns');
 var net = require('net');
 
-var check = function(jobinfo){
+var check = function(jobinfo, retry) {
     //logger.log('info',"check_http: Jobinfo passed to http check: "+sys.inspect(jobinfo));
     var defaulttimeout = config.timeout * 1;
     var timeout = config.timeout * 1;
-    if(jobinfo.parameters.threshold){
+    if (jobinfo.parameters.threshold) {
         defaulttimeout = 1000 * parseInt(jobinfo.parameters.threshold);
         if (defaulttimeout > 90000) defaulttimeout = 90000;
         timeout = defaulttimeout + 2000;
     }
-    var debugMessage = function (messageType, message){
-        if(jobinfo.debug || config.debug){
+    var debugMessage = function (messageType, message) {
+        if (jobinfo.debug || config.debug) {
             logger.log(messageType,message);
         }
     };
+    if (!retry && jobinfo.targetip) {
+        delete jobinfo.targetip;
+    }
     jobinfo.results = {start:new Date().getTime()};
     if (jobinfo.redirectstart) {
         // Set start from before the redirect
         jobinfo.results.start =  jobinfo.redirectstart;
     }
-    if(!jobinfo.parameters.target){
+    if (!jobinfo.parameters.target) {
         //logger.log('info',"check_http: Invalid URL");
+        jobinfo.results.end = new Date().getTime();
+        jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
         jobinfo.results.success = false;
         jobinfo.results.statusCode = 'error';
         jobinfo.results.message = 'Missing URL';
         resultobj.process(jobinfo, true);
         return true;
-    }else{
+    } else {
         var thetarget = jobinfo.redirecttarget || jobinfo.parameters.target;
-        try{
+        try {
             var targetinfo = url.parse(thetarget);
-        }catch(error){
+        } catch(error) {
             //logger.log('info',"check_http: Invalid URL");
+            jobinfo.results.end = new Date().getTime();
+            jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
             jobinfo.results.success = false;
             jobinfo.results.statusCode = 'error';
             jobinfo.results.message = 'Invalid URL: '+error;
             resultobj.process(jobinfo, true);
             return true;
         }
-        if (jobinfo.parameters.ipv6 && targetinfo.hostname){
-            if (!jobinfo.targetip) {
-                if (net.isIPv6(targetinfo.hostname)) {
-                    // No problem, already an IPv6
-                } else {
-                    dns.resolve6(targetinfo.hostname, function (err, addresses) {
+        if (!targetinfo.hostname) {
+            jobinfo.results.end = new Date().getTime();
+            jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
+            jobinfo.results.success = false;
+            jobinfo.results.statusCode = 'error';
+            jobinfo.results.message = 'Invalid URL - missing hostname';
+            resultobj.process(jobinfo, true);
+            return true;
+        }
+        var tryIpv6 =  function(){
+            jobinfo.dnsresolutionstart = new Date().getTime();
+            dns.resolve6(targetinfo.hostname, function (err, addresses) {
+                jobinfo.dnsresolutionend = new Date().getTime();
+                if (err) {
+                    jobinfo.results.success = false;
+                    jobinfo.results.end = new Date().getTime();jobinfo.results.end = new Date().getTime();
+                    jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
+                    jobinfo.results.statusCode = 'Error';
+                    jobinfo.results.message = 'Error resolving '+targetinfo.hostname;
+                    if (err.code === 'ENODATA') {
+                        jobinfo.results.message = 'No addresses found for '+targetinfo.hostname;
+                    } else if (err.code === 'ENOTFOUND') {
+                        jobinfo.results.message = 'No DNS resolution for '+targetinfo.hostname;
+                    }
+                    resultobj.process(jobinfo);
+                } else if(addresses && addresses[0]) {
+                    jobinfo.targetip = addresses[0];
+                    return check(jobinfo, true);
+                } else { // no resolution - empty array returned.
+                    jobinfo.results.success = false;
+                    jobinfo.results.end = new Date().getTime();
+                    jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
+                    jobinfo.results.statusCode = 'Error';
+                    jobinfo.results.message = 'No DNS addresses found for '+targetinfo.hostname;
+                    resultobj.process(jobinfo);
+                }
+                return true;
+            });
+            return true;
+        };
+        if (!jobinfo.targetip) {
+            if (jobinfo.parameters.ipv6) {
+                if (!net.isIPv6(targetinfo.hostname)) {
+                    return tryIpv6();
+                }
+            } else {
+                // Resolve the ipv4
+                if (!net.isIPv4(targetinfo.hostname) && !net.isIPv6(targetinfo.hostname)) {
+                    jobinfo.dnsresolutionstart = new Date().getTime();
+                    dns.resolve4(targetinfo.hostname, function (err, addresses) {
+                        jobinfo.dnsresolutionend = new Date().getTime();
                         if (err) {
-                            jobinfo.results.success = false;
-                            jobinfo.results.end = new Date().getTime();
-                            jobinfo.results.statusCode = 'Error';
-                            jobinfo.results.message = 'Error resolving IPv6 for '+targetinfo.hostname;
-                            if (err.code === 'ENODATA') {
-                                jobinfo.results.message = 'No IPv6 addresses found for '+targetinfo.hostname;
-                            } else if (err.code === 'ENOTFOUND') {
-                                jobinfo.results.message = 'No resolution for '+targetinfo.hostname;
+                            //logger.log('info','check_http: resolution error: '+sys.inspect(err));
+                            //logger.log('info','check_http: resolution addresses: '+sys.inspect(addresses));
+                            if (err.code === 'ENODATA' || err.code === 'ENOTFOUND') {
+                                return tryIpv6();
                             }
-                            resultobj.process(jobinfo);
-                        } else if(addresses && addresses[0]) {
-                            jobinfo.targetip = addresses[0];
-                            return check(jobinfo);
-                        } else { // no resolution - empty array returned.
                             jobinfo.results.success = false;
                             jobinfo.results.end = new Date().getTime();
+                            jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
                             jobinfo.results.statusCode = 'Error';
-                            jobinfo.results.message = 'No IPv6 addresses found for '+targetinfo.hostname;
+                            jobinfo.results.message = 'Error resolving the hostname: '+targetinfo.hostname;
                             resultobj.process(jobinfo);
+                        } else if(addresses && addresses.length && addresses[0]) {
+                            //logger.log('info','check_http: resolution addresses: '+sys.inspect(addresses));
+                            if (addresses[0]) {
+                                jobinfo.targetip = addresses[0];
+                                return check(jobinfo, true);
+                            }
+                        } else { // no ipv4 resolution - empty array returned.
+                            return tryIpv6();
                         }
                         return true;
                     });
+                    return true;
                 }
-                return true;
-            } else {
-                // We've already resolved this ip.
-                targetinfo.hostname = jobinfo.targetip;
             }
+        } else {
+            targetinfo.hostname = jobinfo.targetip;
         }
+        debugMessage('info','check_http: targetip is: '+sys.inspect(jobinfo.targetip));
+        debugMessage('info','check_http: targetinfo hostname is: '+sys.inspect(targetinfo.hostname));
 		var agent;
-        if(targetinfo.protocol){
-            if(targetinfo.protocol == 'http:'){
+        if (targetinfo.protocol) {
+            if (targetinfo.protocol == 'http:') {
                 agent = require('http');
                 //logger.log('info',"check_http: Using http");
-            }else if (targetinfo.protocol == 'https:'){
+            } else if (targetinfo.protocol == 'https:') {
                 agent = require('https');
                 //logger.log('info',"check_http: Using https");
-            }else{
+            } else {
                 //logger.log('info',"check_httpcontent: Invalid protocol: "+targetinfo.protocol);
                 jobinfo.results.end = new Date().getTime();
                 jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
@@ -128,20 +181,20 @@ var check = function(jobinfo){
                            'User-Agent': 'NodePing',
                            'Host': targetinfo.host};
         // Auth
-        if(targetinfo.auth){
+        if (targetinfo.auth) {
             httpheaders.Authorization = 'Basic ' + new Buffer(targetinfo.auth).toString('base64');
         }
         var targetoptions = {host:targetinfo.hostname,
                              method:'GET',
                              headers: httpheaders,
                              rejectUnauthorized: false};
-        if(targetinfo.port){
+        if (targetinfo.port) {
             targetoptions.port = targetinfo.port;
         }
-		if(targetinfo.pathname){
-            if(targetinfo.search){
+		if (targetinfo.pathname) {
+            if (targetinfo.search) {
                 targetoptions.path = targetinfo.pathname+targetinfo.search;
-            }else{
+            } else {
                 targetoptions.path = targetinfo.pathname;
             }
         }
@@ -149,8 +202,8 @@ var check = function(jobinfo){
         debugMessage('info','check_http: Targetoptions is: '+sys.inspect(targetoptions));
         //logger.log('info',"check_http: Url for job "+jobinfo._id+" is "+jobinfo.parameters.target);
         var completed = false;
-        try{
-            var req = agent.request(targetoptions, function(res){
+        try {
+            var req = agent.request(targetoptions, function(res) {
                 res.setEncoding('utf8');
                 res.connection.on('error', function (err) {
                     debugMessage('error','http check error for '+jobinfo.jobid+': '+sys.inspect(err));
@@ -158,7 +211,7 @@ var check = function(jobinfo){
             });
             //debugMessage('info','http check request '+jobinfo.jobid+': '+sys.inspect(req));
             var timeoutid = setTimeout(function() {
-                if(!completed){
+                if (!completed) {
                     completed = true;
                     //logger.log('info',"check_http: setTimeout called.");
                     debugMessage('info','http check settimeout triggered for '+jobinfo.jobid);
@@ -172,8 +225,8 @@ var check = function(jobinfo){
                 if(req)req.abort();
                 return true;
             }, timeout);
-            req.on("response", function(d){
-                if(!completed){
+            req.on("response", function(d) {
+                if (!completed) {
                     clearTimeout(timeoutid);
                     completed = true;
                     //debugMessage('info','http check response triggered for '+jobinfo.jobid+': '+sys.inspect(req.res));
@@ -188,7 +241,10 @@ var check = function(jobinfo){
                                             	httpstatus:req.res.statusCode,
                                                 httpserverip:req.connection.remoteAddress}
                                            };
-                    if(jobinfo.parameters.follow && req.res.statusCode >=300 && req.res.statusCode < 399){
+                    if (jobinfo.dnsresolutionstart && jobinfo.dnsresolutionend) {
+                        jobinfo.results.diag.dns = {runtime: jobinfo.dnsresolutionend - jobinfo.dnsresolutionstart};
+                    }
+                    if (jobinfo.parameters.follow && req.res.statusCode >=300 && req.res.statusCode < 399) {
                         // Have we redirected too many times already?
                         if (jobinfo.redirectcount && jobinfo.redirectcount > 4) {
                             // Too many redirects.
@@ -196,7 +252,8 @@ var check = function(jobinfo){
                             jobinfo.results.message = 'Too many redirects';
                             jobinfo.results.statusCode = req.res.statusCode;
                         } else {
-                            if (!jobinfo.redirectcount){
+                            delete jobinfo.targetip;
+                            if (!jobinfo.redirectcount) {
                                 jobinfo.redirectcount = 1;
                             } else {
                                 jobinfo.redirectcount = jobinfo.redirectcount + 1;
@@ -244,18 +301,18 @@ var check = function(jobinfo){
                             req.abort();
                             return check(jobinfo);
                         }
-                    } else if(req.res.statusCode >=200 && req.res.statusCode < 399){
+                    } else if (req.res.statusCode >=200 && req.res.statusCode < 399) {
                         // Did it take too long?
-                        if(defaulttimeout < jobinfo.results.runtime){
+                        if (defaulttimeout < jobinfo.results.runtime) {
                             jobinfo.results.success = false;
                             jobinfo.results.message = 'Timeout';
                             jobinfo.results.statusCode = 'Timeout';
                             
-                        }else{
+                        } else {
                             jobinfo.results.success = true;
                             jobinfo.results.message = 'Success';
                         }
-                    }else{
+                    } else {
                         jobinfo.results.success = false;
                         jobinfo.results.message = 'HTTP status returned: '+req.res.statusCode;
                     }
@@ -265,7 +322,7 @@ var check = function(jobinfo){
                 return true;
             }).on("error", function(e){
                 clearTimeout(timeoutid);
-                if(!completed){
+                if (!completed) {
                     completed = true;
                     jobinfo.results.end = new Date().getTime();
                     jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
@@ -275,9 +332,9 @@ var check = function(jobinfo){
                     resultobj.process(jobinfo);
                 }
                 return true;
-            }).on("timeout", function(to){
+            }).on("timeout", function(to) {
                 clearTimeout(timeoutid);
-                if(!completed){
+                if (!completed) {
                     completed = true;
                     //logger.log('info',"check_http: Caught timeout");
                     jobinfo.results.end = new Date().getTime();
@@ -295,10 +352,10 @@ var check = function(jobinfo){
                 socket.emit("agentRemove");
             });
             req.end();
-        }catch(ec){
+        } catch(ec) {
             clearTimeout(timeoutid);
-            if(!completed){
-                if(req)req.abort();
+            if (!completed) {
+                if (req) req.abort();
                 jobinfo.results.end = new Date().getTime();
                 jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
                 jobinfo.results.statusCode = 'Error';
