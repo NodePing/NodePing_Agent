@@ -75,7 +75,7 @@ var check = function(jobinfo){
             return true;
         }, timeout);
         try{
-            var options = {servername:targetinfo.hostname};
+            var options = {servername: jobinfo.parameters.servername || targetinfo.hostname};
             if (jobinfo.parameters.forceSSLv3){
                 options.secureProtocol = 'SSLv3_method';
             }
