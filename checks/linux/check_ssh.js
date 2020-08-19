@@ -43,6 +43,7 @@ exports.check = function(jobinfo){
     if(jobinfo.parameters.username){
         // Validate
         if ( jobinfo.parameters.username.match(/[^\w-]/) ) validationerrors.push("Username contains invalid characters.");
+        username = jobinfo.parameters.username;
     }else{
         justchecking = true;
     }

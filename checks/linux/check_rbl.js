@@ -112,7 +112,6 @@ var check = exports.check = function(jobinfo){
                  'bl.spamcop.net',
                  'dnsrbl.swinog.ch',
                  'uribl.swinog.ch',
-                 'dnsbl.inps.de',
                  'cbl.abuseat.org',
                  'bogons.cymru.com',
                  'dnsbl.kempt.net',
