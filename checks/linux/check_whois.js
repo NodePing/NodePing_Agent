@@ -141,9 +141,11 @@ var check = exports.check = function(jobinfo){
                         for(var i in whoisData){
                             if (whoisData[i] && whoisData[i].data && !foundExpiration){
                                 whoisData[i].data =  parseWhoisData(whoisData[i].data);
+
                                 for (var key in whoisData[i].data) {
-                                    if (key.toLowerCase().includes('expir')){
+                                    if (key.toLowerCase().includes('expir') || key.toLowerCase().includes('renew')) {
                                         //logger.log('info','We found what looks like expiration: '+sys.inspect(key)+sys.inspect(whoisData[i].data[key]));
+                                        whoisData[i].data[key] = whoisData[i].data[key].replace('CLST',''); // weird timezone for .cl TLD
                                         var expiration = moment(whoisData[i].data[key]);
                                         if (expiration.isValid()){
                                             foundExpiration = true;
@@ -167,10 +169,10 @@ var check = exports.check = function(jobinfo){
                                             }
                                         } else {
                                             logger.log('error','WHOIS invalid expiration: '+sys.inspect(whoisData[i].data[key]));
-                                            logger.log('info','WHOIS response for '+jobinfo._id+': '+sys.inspect(whoisData));
-                                            jobinfo.results.statusCode = 'Expiration not found';
-                                            jobinfo.results.success = false;
-                                            jobinfo.results.message = "We were unable to parse an expiration date from the WHOIS response. Please contact support for help.";
+                                            //logger.log('info','WHOIS response for '+jobinfo._id+': '+sys.inspect(whoisData));
+                                            //jobinfo.results.statusCode = 'Expiration not found';
+                                            //jobinfo.results.success = false;
+                                            //jobinfo.results.message = "We were unable to parse the expiration date from the WHOIS response. Please contact support for help.";
                                         }
                                     }
                                 }
@@ -181,7 +183,7 @@ var check = exports.check = function(jobinfo){
                             logger.log('info','WHOIS response for '+jobinfo._id+': '+sys.inspect(whoisData));
                             jobinfo.results.statusCode = 'Expiration not found';
                             jobinfo.results.success = false;
-                            jobinfo.results.message = "We were unable to parse an expiration date from the WHOIS response. Please contact support for help.";
+                            jobinfo.results.message = "We were unable to find an expiration date from the WHOIS response. Please contact support for help.";
                         }
                     } else if (!jobinfo.parameters.contentstring) {
                         jobinfo.results.success = true;
@@ -212,20 +214,37 @@ var check = exports.check = function(jobinfo){
 };
 
 var parseWhoisData = function(rawData) {
-
     var result = {};
     var lines = rawData.split('\n');
-
+    //console.log('lines',lines);
     lines.forEach(function(line){
 
         line = line.trim();
-        if ( line && line.includes(': ') ) {
+        if ( line && (line.includes(': ') || line.includes(':2'))) { // The ':20' is for .id TLD
             var lineParts = line.split(':');
 
             // 'Greater than' since lines often have more than one colon, eg values with URLs
             if ( lineParts.length >= 2 ) {
                 var key = lineParts[0],
                     value = lineParts.splice(1).join(':').trim()
+
+                // If multiple lines use the same key, combine the values
+                if ( key in result ) {
+                    if (typeof result[key] === 'string') {
+                        result[key] = [result[key]];
+                    }
+                    result[key].push(value);
+                    return
+                }
+                result[key] = value;
+            }
+        } else if ( line && line.includes('] ') ) {
+            var lineParts = line.split(']');
+
+            // 'Greater than' since lines often have more than one colon, eg values with URLs
+            if ( lineParts.length >= 2 ) {
+                var key = lineParts[0],
+                    value = lineParts.splice(1).join(']').trim();
 
                 // If multiple lines use the same key, combine the values
                 if ( key in result ) {
