@@ -540,8 +540,10 @@ var disableOrRemove = function() {
             } else {
                 config.data.check_enabled = false;
                 config.persistConfig(config.data);
-                console.log(new Date().toISOString(),'Info: NodePingAgent disabled');
-                process.exit(0);
+                setTimeout(function() {
+                    console.log(new Date().toISOString(),'Info: NodePingAgent disabled');
+                    process.exit(0);
+                }, 1000);
             }
         });
         return true;
