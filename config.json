@@ -1,0 +1,9 @@
+{
+    "check_id": "<Your NodePing Check ID>",
+    "check_token": "<Your NodePing Check Token>",
+    "check_enabled": true,
+    "node_path": "/usr/local/bin/node",
+    "agent_path": "/home/youruser/NodePing_Agent",
+    "agent_logpath": "/home/youruser/NodePing_Agent/log/NodePingAgent.log",
+    "plugins": {}
+}

@@ -1,0 +1,12 @@
+{
+    "heartbeathandler": {
+        "host": "push.nodeping.com",
+        "port": "443",
+        "path": "/",
+        "name": "NodePingPush"
+    },
+    "diagnosticserver": {
+        "host": "diag.nodeping.com",
+        "port": "3030"
+    }
+}

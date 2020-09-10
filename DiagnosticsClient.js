@@ -11,7 +11,8 @@
 const WebSocket = require('ws');
 var pingTimeout, ws;
 var reconnectcount = 0;
-var config = require('./config');
+var npconfig = require('./npconfig.json');
+var config = require('./config.json');
 var pingo = require('./diagnostics/ping.js');
 var mtr = require('./diagnostics/mtr.js');
 var traceroute = require('./diagnostics/traceroute.js');
@@ -19,18 +20,18 @@ var dig = require('./diagnostics/dig.js');
 var ws;
 var runningTool = 0;
 
-if (!config.NodePingAgent_enabled) {
-    console.log(new Date().toISOString(),'Check is disabled in config.js - shutting down');
+if (!config.check_enabled) {
+    console.log(new Date().toISOString(),'Check is disabled in config.json - shutting down');
     process.exit(0);
 }
 
-if (!config.diagnosticserver || !config.diagnosticserver.host || !config.diagnosticserver.port) {
-    console.log(new Date().toISOString(),'Missing diagnosticserver info in config.js - shutting down');
+if (!npconfig.diagnosticserver || !npconfig.diagnosticserver.host || !npconfig.diagnosticserver.port) {
+    console.log(new Date().toISOString(),'Missing diagnosticserver info in npconfig.json - shutting down');
     process.exit(0);
 }
 
 if (!config.check_id || !config.check_token || config.check_id === '<Your NodePing Check ID>' || config.check_token === '<Your NodePing Check Token>') {
-    console.log(new Date().toISOString(),'Missing check info in config.js - shutting down');
+    console.log(new Date().toISOString(),'Missing check info in config.json - shutting down');
     process.exit(0);
 }
 
@@ -55,7 +56,7 @@ var startClient = function() {
 var connectToServer = function() {
     console.log(new Date().toISOString(),'Connecting to server');
 
-    ws = new WebSocket('wss://'+config.diagnosticserver.host+':'+config.diagnosticserver.port+'/',{perMessageDeflate: false, timeout:4000});
+    ws = new WebSocket('wss://'+npconfig.diagnosticserver.host+':'+npconfig.diagnosticserver.port+'/',{perMessageDeflate: false, timeout:4000});
 
     ws.on('error', function error(err) {
         console.log(new Date().toISOString(),'Error from server',err);

@@ -8,14 +8,46 @@
  * Accepts check results, pushes results to NodePing and schedules the next check run.
  */
 
-var config = require('../config'),
-    sys = require("util"),
+var sys = require("util"),
     querystring = require('querystring'),
     agent = require('https'),
     path = require('path'),
     fs = require('fs'),
     os = require('os'),
-    nputil = require('../nputil');
+    nputil = require('..'+path.sep+'nputil');
+
+var config = {
+    data: require('..'+path.sep+'config.json'),
+    npconfig: require('..'+path.sep+'npconfig.json'),
+    checkdata: require('..'+path.sep+'checkdata.json'),
+    writingCheckConfig: false,
+    updateCheckData: function(checkinfo) {
+        if (checkinfo && checkinfo._id) {
+            checkdata[checkinfo._id] = checkinfo;
+            return config.persistCheckData();
+        }
+        return false;
+    },
+    persistCheckData: function() {
+        console.log('Persisting check data to disk');
+        if (config.writingCheckConfig) {
+            console.log('Already writing check data file - giving up.');
+            return false;
+        } 
+        config.writingCheckConfig = true;
+        var prettyjsoncheckdata = JSON.stringify(checkdata, null, 6);
+        //console.log('checkdata json:',prettyjsoncheckdata);
+        fs.writeFile(config.data.agent_path+path.sep+'checkdata.json', prettyjsoncheckdata, {encoding:'utf8',flag:'w'}, function(err) {
+            if (err) {
+                console.log('Check data write error:',err);
+            } else {
+                console.log('Check data written');
+            }
+            config.writingCheckConfig = false;
+        });
+        return true;
+    }
+};
 
 exports.process = function(jobinfo, override) {
     //console.log(new Date(),'info','results: job: '+sys.inspect(jobinfo));
@@ -207,7 +239,7 @@ function finalize(jobinfo){
     if (!jobinfo.location) {
         jobinfo.location = {};
     }
-    jobinfo.location[jobinfo.results.start] = config.check_id;
+    jobinfo.location[jobinfo.results.start] = config.data.check_id;
 
     // Is this a 'down' result?
     if (!jobinfo.results.success && (!jobinfo.hasOwnProperty('state') || (jobinfo.state && jobinfo.state !== '0' && jobinfo.state !== 'false'))) {
@@ -246,9 +278,9 @@ function recheck(jobinfo){
         jobinfo._id = jobinfo.jobid;
     }
     if (jobinfo.results && jobinfo.results.start) {
-        jobinfo.location[jobinfo.results.start] = config.check_id;
+        jobinfo.location[jobinfo.results.start] = config.data.check_id;
     }
-    var checkpath = config.NodePingAgent_path+path.sep+'checks'+path.sep+os.platform()+path.sep+'check_'+jobinfo.type.toLowerCase();
+    var checkpath = config.data.agent_path+path.sep+'checks'+path.sep+os.platform()+path.sep+'check_'+jobinfo.type.toLowerCase();
     try {
         var check = require(checkpath);
         // Decode the params value.
@@ -279,7 +311,6 @@ function rescheduleCheck(jobinfo) {
     if (jobinfo.runat < herenow) {
         jobinfo.runat = herenow - 5000;
     }
-    updateRunAt(jobinfo._id, jobinfo.runat);
     jobinfo.retry = 0;
     jobinfo.state = (jobinfo.results.success) ? 1 : 0;
     delete(jobinfo.results);
@@ -290,35 +321,41 @@ function rescheduleCheck(jobinfo) {
     if (!jobinfo.eventinfo) {
         jobinfo.eventinfo = {};
     }
-    config.checklist[jobinfo._id] = jobinfo;
+    config.checkdata[jobinfo._id] = jobinfo;
+    updateRunAt(jobinfo._id, jobinfo.runat);
     return true;
 }
 
 function updateRunAt(jobid, runat) {
     console.log(new Date(),'Updating run at for',jobid, runat);
-    if (config && config.checklist && config.checklist[jobid]) {
-        config.checklist[jobid].runat =  runat;
-        persistConfig();
+    if (config && config.checkdata && config.checkdata[jobid]) {
+        config.checkdata[jobid].runat =  runat;
+        config.updateCheckData(config.checkdata[jobid]);
     }
-};
-
-var persistConfig = function() {
-    var prettyjsonconfig = JSON.stringify(config, null, 4);
-    var configstring = 'var config = '+prettyjsonconfig+';\nfor(var i in config){\n    exports[i] = config[i];\n};';
-    fs.unlinkSync(config.NodePingAgent_path+path.sep+'config.js');
-    fs.writeFileSync(config.NodePingAgent_path+path.sep+'config.js', configstring, {encoding:'utf8',flag:'w'});
-    return true;
 };
 
 function postToResultsHandler(jobinfo, rh) {
     //console.log(new Date(),'postToResultsHandler',jobinfo)
     // Send this to the results handler via an https post.
     if (!rh) {
-        rh = config.heartbeathandler;
+        rh = config.npconfig.heartbeathandler;
     }
+
+    var completed = false;
+    var timeoutid = setTimeout(function() {
+        if (!completed) {
+            completed = true;   
+            // add rh to blacklist
+            retryPostToResultshandler(jobinfo);
+        }
+        if (req) {
+            req.abort();
+        }
+        return true;
+    }, 4500);
     
     try {
-        var postdata = querystring.stringify({results:JSON.stringify(jobinfo), agent:config.check_id, checktoken:config.check_token});
+        var postdata = querystring.stringify({results:JSON.stringify(jobinfo), agent:config.data.check_id, checktoken:config.data.check_token});
         var postoptions = {host:rh.host,
                            port:rh.port,
                            path:rh.path,
@@ -328,19 +365,6 @@ function postToResultsHandler(jobinfo, rh) {
                            rejectUnauthorized: false};
         //console.log(new Date(),"info", "PostOptions "+sys.inspect(postoptions));
         //console.log(new Date(),"info", "Post Data "+sys.inspect(postdata));
-        var completed = false;
-        var timeoutid = setTimeout(function() {
-            if (!completed) {
-                completed = true;   
-                // add rh to blacklist
-                retryPostToResultshandler(jobinfo);
-            }
-            if (req) {
-                req.abort();
-            }
-            return true;
-        }, 4500);
-
         var req = agent.request(postoptions,function(res) {
             var body = '';
             res.setEncoding('utf8');

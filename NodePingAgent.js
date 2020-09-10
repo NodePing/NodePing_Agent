@@ -5,7 +5,7 @@
 
 /*
  * NodePingAgent.js
- * configuration is at ./config.js
+ * configuration is at ./config.json
  * Install the NodePingAgent with 'install' argument such as './NodePingAgent.js install <your check id> <your check token>'
  * To be run on command line such as './NodePingAgent.js'
  * Debug or test run with the 'test' argument such as './NodePingAgent.js test'
@@ -15,9 +15,9 @@
  */
 
 var util = require('util'),
-    fs = require('fs'),
     qs = require('querystring'),
     path = require('path'),
+    fs = require('fs'),
     os = require('os'),
     querystring = require('querystring'),
     agent = require('https'),
@@ -26,9 +26,7 @@ var util = require('util'),
     disable = (process.argv[2] == 'disable') ? true : false,
     enable = (process.argv[2] == 'enable') ? true : false,
     remove = (process.argv[2] == 'remove') ? true : false,
-    config = require('./config'),
     checkoffset = 0,
-    heartbeatoffset = config.heartbeatoffset || Math.floor((Math.random() * 30) + 1) * 1000,
     pluginsToRun = [],
     dataToReturn = {npcheckclock:{start:new Date().getTime()}},
     checksToRun = [];
@@ -43,50 +41,118 @@ process.on('SIGINT', function () {
     process.kill(process.pid);
 });
 
-var persistConfig = function() {
-    var prettyjsonconfig = JSON.stringify(config, null, 4);
-    var configstring = 'var config = '+prettyjsonconfig+';\nfor(var i in config){\n    exports[i] = config[i];\n};';
-    fs.unlinkSync(config.NodePingAgent_path+path.sep+'config.js');
-    fs.writeFileSync(config.NodePingAgent_path+path.sep+'config.js', configstring, {encoding:'utf8',flag:'w'});
-    return true;
+var config = {
+    data: require('.'+path.sep+'config.json'),
+    npconfig: require('.'+path.sep+'npconfig.json'),
+    checkdata: require('.'+path.sep+'checkdata.json'),
+    writingConfig: false,
+    writingNpconfig: false,
+    writingCheckConfig: false,
+    persistConfig: function(configData) {
+        config.data = configData;
+        if (config.writingConfig) {
+            console.log('Already writing config file - giving up.');
+            return true;
+        }
+        console.log('Persisting config to disk.');
+        config.writingConfig = true;
+        var prettyjsonconfig = JSON.stringify(config.data, null, 6);
+        fs.writeFile(config.data.agent_path+path.sep+'config.json', prettyjsonconfig, {encoding:'utf8',flag:'w'}, function(err){
+            if (err) {
+                console.log('Config write error:',err);
+            } else {
+                console.log('Config data written');
+            }
+            config.writingConfig = false;
+        });
+        return true;
+    },
+    persistNpconfig: function(npconfig) {
+        config.npconfig = npconfig;
+        if (config.writingNpconfig) {
+            console.log('Already writing npconfig file - giving up.');
+            return true;
+        }
+        console.log('Persisting npconfig to disk.');
+        config.writingNpconfig = true;
+        var prettyjsonconfig = JSON.stringify(config.npconfig, null, 6);
+        fs.writeFile(config.data.agent_path+path.sep+'npconfig.json', prettyjsonconfig, {encoding:'utf8',flag:'w'}, function(err){
+            if (err) {
+                console.log('Npconfig write error:',err);
+            } else {
+                console.log('Npconfig data written');
+            }
+            config.writingNpconfig = false;
+        });
+        return true;
+    },
+    setCheckData: function(checks) {
+        if (checks) {
+            checkdata = checks;
+            return config.persistCheckData();
+        }
+        return false;
+    },
+    persistCheckData: function() {
+        console.log('Persisting check data to disk');
+        if (config.writingCheckConfig) {
+            console.log('Already writing check data file - giving up.');
+            return false;
+        }
+        config.writingCheckConfig = true;
+        var prettyjsoncheckdata = JSON.stringify(checkdata, null, 6);
+        //console.log('checkdata json:',prettyjsoncheckdata);
+        fs.writeFile(config.data.agent_path+path.sep+'checkdata.json', prettyjsoncheckdata, {encoding:'utf8',flag:'w'}, function(err) {
+            if (err) {
+                console.log('Check data write error:',err);
+            } else {
+                console.log('Check data written');
+            }
+            config.writingCheckConfig = false;
+        });
+        return true;
+    }
 };
+
+var heartbeatoffset = config.data.heartbeatoffset || Math.floor((Math.random() * 30) + 1) * 1000;
+config.data.heartbeatoffset = heartbeatoffset;
 
 var getPluginData = function(data, callback) {
     if (pluginsToRun.length > 0) {
-        var next = pluginsToRun.pop();
+        var next = pluginsToRun.shift();
         try {
             console.log(new Date().toISOString(),'Info: NodePingAgent: Gathering data from',next,'plugin.');
             var plugin = require("./plugins/" + next);
             if (plugin) {
-                return plugin.get(data, getPluginData);
+                return plugin.get(dataToReturn, getPluginData);
             } else {
                 console.log(new Date().toISOString(),'Error: NodePingAgent: plugin',next,'missing.');
             }
         } catch(e) {
             console.log(new Date().toISOString(),'Error: NodePingAgent: plugin',next,'threw error:',e);
         }
-        return getPluginData(data, callback);
+        return getPluginData(dataToReturn, callback);
     } else {
         // We've got all the data.
-        data.npcheckclock.end = new Date().getTime();
-        data.checkcount = Object.keys(config.checklist).length;
-        return digestData(data);
+        dataToReturn.npcheckclock.end = new Date().getTime();
+        dataToReturn.checkcount = Object.keys(config.checkdata).length;
+        return digestData();
     }
 };
 
-var digestData = function(data) {
+var digestData = function() {
     if (test) {
-        console.log(new Date().toISOString(),'Info: NodePingAgent data:',data);
+        console.log(new Date().toISOString(),'Info: NodePingAgent data:',dataToReturn);
         console.log(new Date().toISOString(),'Info: Not posting anything to NodePing.');
         return true;
-    } else if (!config.NodePingAgent_enabled) {
+    } else if (!config.data.check_enabled) {
         return false;
     }
     // Send data to NodePing
     console.log(new Date().toISOString(),'Info: NodePingAgent: offset for heartbeat:',heartbeatoffset);
     setTimeout( function() {
-        console.log(new Date().toISOString(),'Info: NodePingAgent: Sending heartbeat to NodePing:',data);
-        postHeartbeat(data);
+        console.log(new Date().toISOString(),'Info: NodePingAgent: Sending heartbeat to NodePing:',dataToReturn);
+        postHeartbeat(dataToReturn);
     }, heartbeatoffset);
     return true;
 }
@@ -95,14 +161,15 @@ var postHeartbeat = function(data, retries) {
     if (!retries) {
         retries = 0;
     }
-    heartbeathandler = config.heartbeathandler;
+    var timeoutid = false;
+    heartbeathandler = config.npconfig.heartbeathandler;
     data.npcheckclock.runtime = data.checkcount;
     try {
         dataToPost = {
             results:JSON.stringify(data), 
-            updatestamp: config.NodePingAgent_lastupdate,
-            check:config.check_id, 
-            checktoken:config.check_token
+            updatestamp: config.data.agent_lastupdate,
+            check:config.data.check_id, 
+            checktoken:config.data.check_token
         };
         var querystring = require('querystring');
         var agent = require('https');
@@ -116,7 +183,7 @@ var postHeartbeat = function(data, retries) {
                            headers:{'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': postdata.length}};
         var completed = false;
         setTimeout(function(){
-            var timeoutid = setTimeout(function() {
+            timeoutid = setTimeout(function() {
                 if (!completed) {
                     completed = true;
                     if (retries > 4) {
@@ -143,41 +210,41 @@ var postHeartbeat = function(data, retries) {
                     clearTimeout(timeoutid);
                     completed = true;
                     body = JSON.parse(body);
-                    console.log(new Date().toISOString(),'Info: NodePingAgent: received from NodePing:',body);
+                    //console.log(new Date().toISOString(),'Info: NodePingAgent: received from NodePing:',body);
                     if (body.success) {
                         // Look for any config changes
                         if (body.config) updateConfig(body.config);
                         if (body.checklist) {
                             // Replace the checklist but retain the 'runat' and 'state' elements of existing checks so we can know when to run it next
                             var oldConfig = {};
-                            for (var i in config.checklist) {
-                                oldConfig[config.checklist[i]._id] = {"modified":config.checklist[i].modified};
-                                if (config.checklist[i].runat) {
-                                    oldConfig[config.checklist[i]._id].runat = config.checklist[i].runat;
+                            for (var i in config.checkdata) {
+                                oldConfig[config.checkdata[i]._id] = {"modified":config.checkdata[i].modified};
+                                if (config.checkdata[i].runat) {
+                                    oldConfig[config.checkdata[i]._id].runat = config.checkdata[i].runat;
                                 }
                             }
                             // Replace the checklist with what we got from NodePing - so any check changes are reflected.
-                            config.checklist = {};
+                            config.checkdata = {};
                             var now = new Date().getTime();
                             for (var i in body.checklist) {
-                                config.checklist[body.checklist[i]._id] = body.checklist[i];
+                                config.checkdata[body.checklist[i]._id] = body.checklist[i];
                                 if (oldConfig[body.checklist[i]._id]) {
-                                    if (config.checklist[body.checklist[i]._id].modified > oldConfig[body.checklist[i]._id].modified) {
-                                        config.checklist[body.checklist[i]._id].runat = now - 10;
+                                    if (config.checkdata[body.checklist[i]._id].modified > oldConfig[body.checklist[i]._id].modified) {
+                                        config.checkdata[body.checklist[i]._id].runat = now - 10;
                                     } else {
-                                        config.checklist[body.checklist[i]._id].runat = oldConfig[body.checklist[i]._id].runat;
+                                        config.checkdata[body.checklist[i]._id].runat = oldConfig[body.checklist[i]._id].runat;
                                     }
                                 } else {
-                                    config.checklist[body.checklist[i]._id].runat = now - 10;
+                                    config.checkdata[body.checklist[i]._id].runat = now - 10;
                                 }
-                                if (config.checklist[body.checklist[i]._id].runat < now) {
-                                    checksToRun.push(config.checklist[body.checklist[i]._id]);
+                                if (config.checkdata[body.checklist[i]._id].runat < now) {
+                                    checksToRun.push(config.checkdata[body.checklist[i]._id]);
                                 }
                             }
                             oldConfig = false;
                             body.checklist =  false;
                             // Save the new checklist
-                            updateConfig(config);
+                            config.setCheckData(config.checkdata);
                             // Stagger the running of the checks evently over about 50 seconds minus the heartbeat offset
                             var checksToRunCount = checksToRun.length;
                             if (checksToRunCount) {
@@ -186,6 +253,14 @@ var postHeartbeat = function(data, retries) {
                                 } else {
                                     checkoffset = Math.floor((50000-heartbeatoffset)/checksToRunCount);
                                 }
+                                //Sort the checks by runat so we don't get throttled
+                                checksToRun.sort(function(a,b){
+                                    if (a.runat && b.runat){
+                                        return (a.runat - b.runat);
+                                    } else {
+                                        return 0;
+                                    }
+                                });
                             }
                             processChecks();
                         }
@@ -259,7 +334,7 @@ var postHeartbeat = function(data, retries) {
         }, retries*200);
         
     } catch (connerror) {
-        clearTimeout(timeoutid);
+        if (timeoutid) clearTimeout(timeoutid);
         console.log(new Date().toISOString(),'Error: NodePingAgent error: Post to NodePing error: ',connerror);
         if (!completed) {
             completed = true;
@@ -281,8 +356,8 @@ var postHeartbeat = function(data, retries) {
 
 var processChecks = function() {
     if (checksToRun.length) {
-        var check = checksToRun.pop();
-        console.log('checkoffset',checkoffset);
+        var check = checksToRun.shift();
+        //console.log('checkoffset',checkoffset);
         setTimeout( function() {
             runCheck(check);
         }, checkoffset);
@@ -293,11 +368,15 @@ var processChecks = function() {
 };
 
 var runCheck = function (checkinfo) {
-    console.log(new Date().toISOString(),'Info: NodePingAgent: running check:',checkinfo);
-    var checkpath = config.NodePingAgent_path + path.sep + 'checks' + path.sep + os.platform() + path.sep + 'check_' + checkinfo.type.toLowerCase();
+    console.log(new Date().toISOString(),'Info: NodePingAgent: running check:',checkinfo._id, checkinfo.type,checkinfo.label);
+    var checkpath = config.data.agent_path + path.sep + 'checks' + path.sep + os.platform() + path.sep + 'check_' + checkinfo.type.toLowerCase();
     fs.access(checkpath+'.js', fs.constants.F_OK, function(err) {
         if (err) {
             console.log(new Date().toISOString(),'Error: NodePingAgent: No code available for check type:',checkinfo.type);
+            var resultobj = require('./checks/results.js');
+            var now = new Date().getTime();
+            checkinfo.results = {start:now,end:now,runtime:0,success:false, statusCode:'error', message:'No code available on the AGENT for that check type'};
+            resultobj.process(checkinfo);
         } else {
             console.log(new Date().toISOString(),'Info: NodePingAgent: Running check type:',checkinfo.type);
             try {
@@ -319,23 +398,40 @@ var runCheck = function (checkinfo) {
 
 var updateConfig = function(newconfig) {
     //console.log('Newconfig',newconfig);
+    var updatedConfig =  false;
+    var updatedNpConfig =  false;
     if (newconfig) {
         for (var c in newconfig) {
-            if (c == 'check_interval' && config.check_interval != newconfig.check_interval) {
-                // New interval.  Reconfigure the cron job
-                setCronJob(newconfig.check_interval);
+            if (c == 'check_interval'){
+                if (config.data.check_interval != newconfig.check_interval) {
+                    // New interval.  Reconfigure the cron job
+                    setCronJob(newconfig.check_interval);
+                    updatedConfig = true;
+                }
+                config.data[c] = newconfig[c];
+            } else if (c == 'check_enabled') {
+                config.data[c] = newconfig[c];
+                updateConfig = true;
+            } else {
+                // Other configs go in npconfig
+                //console.log('Setting',c, 'to', newconfig[c]);
+                config.npconfig[c] = newconfig[c];
+                updatedNpConfig = true;
             }
-            //console.log('Setting',c, 'to', newconfig[c]);
-            config[c] = newconfig[c];
         }
-        persistConfig();
+        if (updateConfig) {
+            config.persistConfig(config.data);
+        }
+        if (updatedNpConfig) {
+            config.persistNpconfig(config.npconfig);
+        }
     }
     return true;
 };
 
 var setCronJob = function(interval) {
     if (interval) {
-        config.check_interval = interval;
+        config.data.check_interval = interval;
     }
     // Delete current crontab if any.
     require('crontab').load(function(err,tab) {
@@ -344,13 +440,13 @@ var setCronJob = function(interval) {
         }
         tab.remove(tab.findCommand("NodePingAgent.js"));
         // Add new crontab
-        var agentTab = tab.create(config.nodepath+' '+config.NodePingAgent_path+path.sep+'NodePingAgent.js >> '+config.NodePingAgent_logpath+' 2>&1');
-        agentTab.minute().every(config.check_interval);
+        var agentTab = tab.create(config.data.node_path+' '+config.data.agent_path+path.sep+'NodePingAgent.js >> '+config.data.agent_logpath+' 2>&1');
+        agentTab.minute().every(config.data.check_interval);
         tab.save(function(err,tab) {
             if (err) {
                 console.log(new Date().toISOString(),'Error: NodePingAgent error on crontab save',err);
             } else {
-                console.log(new Date().toISOString(),'Info: NodePingAgent crontab installed and enabled for every '+config.check_interval.toString()+' minutes.');
+                console.log(new Date().toISOString(),'Info: NodePingAgent crontab installed and enabled for every '+config.data.check_interval.toString()+' minutes.');
             }
             return true;
         });
@@ -391,25 +487,25 @@ var installOrEnable = function() {
 
     if (interval && checkid && checktoken) {
         console.log(new Date().toISOString(),'Info: NodePingAgent setting checkid = '+checkid+', token = '+checktoken+', and interval = '+interval);
-        config.check_id = checkid;
-        config.check_token = checktoken;
-        config.check_interval = interval;
-    } else if (!checkid && (!config.check_id || config.check_id === '<Your NodePing Check ID>')) {
+        config.data.check_id = checkid;
+        config.data.check_token = checktoken;
+        config.data.check_interval = interval;
+    } else if (!checkid && (!config.data.check_id || config.data.check_id === '<Your NodePing Check ID>')) {
         console.log(new Date().toISOString(),'Error: NodePingAgent missing check id.');
         process.exit(1);
-    } else if (!checktoken && (!config.check_token || config.check_token === '<Your NodePing Check Token>')) {
+    } else if (!checktoken && (!config.data.check_token || config.data.check_token === '<Your NodePing Check Token>')) {
         console.log(new Date().toISOString(),'Error: NodePingAgent missing check token');
         process.exit(1);
     }
-    config.NodePingAgent_enabled = true;
-    config.nodepath = process.argv[0];
-    config.NodePingAgent_path = __dirname;
-    config.NodePingAgent_logpath = __dirname+path.sep+'log'+path.sep+'NodePingAgent.log';
-    config.heartbeatoffset = Math.floor((Math.random() * 30) + 1);
+    config.data.check_enabled = true;
+    config.data.node_path = process.argv[0];
+    config.data.agent_path = __dirname;
+    config.data.agent_logpath = __dirname+path.sep+'log'+path.sep+'NodePingAgent.log';
+    config.data.heartbeatoffset = Math.floor((Math.random() * 30) + 1) * 1000;
     // Set cron job
     setCronJob();
     // save config
-    persistConfig();
+    config.persistConfig(config.data);
 };
 
 var disableOrRemove = function() {
@@ -433,17 +529,17 @@ var disableOrRemove = function() {
             if (remove) {
                 // Delete NodePingAgent files
                 var rmdir = require('rimraf');
-                rmdir(config.NodePingAgent_path, function(err) {
+                rmdir(config.data.agent_path, function(err) {
                     if (err) {
-                        console.log(new Date().toISOString(),'Error: NodePingAgent unable to delete files in',config.NodePingAgent_path);
+                        console.log(new Date().toISOString(),'Error: NodePingAgent unable to delete files in',config.data.agent_path);
                     } else {
                         console.log(new Date().toISOString(),'Info: NodePingAgent files removed');
                     }
                     process.exit(0);
                 });
             } else {
-                config.NodePingAgent_enabled = false;
-                persistConfig();
+                config.data.check_enabled = false;
+                config.persistConfig(config.data);
                 console.log(new Date().toISOString(),'Info: NodePingAgent disabled');
                 process.exit(0);
             }
@@ -453,11 +549,11 @@ var disableOrRemove = function() {
     return true;
 };
 
-if (!config.NodePingAgent_enabled) {
-    console.log(new Date().toISOString(),'Info: NodePingAgent is currenly disabled in ./config.js');
+if (!config.data.check_enabled) {
+    console.log(new Date().toISOString(),'Info: NodePingAgent is currenly disabled in ./config.json');
 }
-for (var p in config.plugins) {
-    if (config.plugins[p].enabled) {
+for (var p in config.data.plugins) {
+    if (config.data.plugins[p].enabled) {
         pluginsToRun.push(p);
     }
 }
@@ -467,8 +563,8 @@ if (install || enable) {
 } else if (disable || remove ) {
     disableOrRemove();
 } else {
-    if (config.check_id === '<Your NodePing Check ID>' || config.check_token === '<Your NodePing Check Token>') {
-        console.log(new Date().toISOString(),'Error: NodePingAgent: Please add your check id and check token to config.js');
+    if (config.data.check_id === '<Your NodePing Check ID>' || config.data.check_token === '<Your NodePing Check Token>') {
+        console.log(new Date().toISOString(),'Error: NodePingAgent: Please add your check id and check token to config.json');
         process.exit(1);
     }
     getPluginData(dataToReturn, getPluginData);
