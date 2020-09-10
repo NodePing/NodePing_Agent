@@ -32,7 +32,7 @@ Depending on the check types running on the AGENT, you'll need the following ins
 
 ## Installation
 
-1. Create the AGENT check in NodePing using the web UI or the API.  Make note of the check ID and the check token that is generated
+1. Create the AGENT check in NodePing using the web UI or the API.  Make note of the check ID and the check token that is generated. You can find that info in the check drawer by clicking on the check label.
 2. Clone this repo or copy the files to the server you want to run the AGENT check. The home folder of the user you want to run it as is usually appropriate.
 
 cd into the directory where you
