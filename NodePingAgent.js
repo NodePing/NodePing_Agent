@@ -5,13 +5,14 @@
 
 /*
  * NodePingAgent.js
- * configuration is at ./config.json
- * Install the NodePingAgent with 'install' argument such as './NodePingAgent.js install <your check id> <your check token>'
- * To be run on command line such as './NodePingAgent.js'
- * Debug or test run with the 'test' argument such as './NodePingAgent.js test'
- * Disable the NodePingAgent with 'disable' argument such as './NodePingAgent.js disable'
- * Re-enable the NodePingAgent with 'enable' argument such as './NodePingAgent.js enable'
- * Uninstall the NodePingAgent with 'remove' argument such as './NodePingAgent.js remove'
+ * configuration is at config.json
+ * Install the NodePingAgent with 'install' argument such as 'node NodePingAgent.js install <your check id> <your check token>'
+ * The install will attempt to create a crontab for the current user to run the AGENT at the configured interval
+ * Manually run on command line such as 'node NodePingAgent.js'
+ * Debug or test run with the 'test' argument such as 'node NodePingAgent.js test'
+ * Disable the NodePingAgent with 'disable' argument such as 'node NodePingAgent.js disable'
+ * Re-enable the NodePingAgent with 'enable' argument such as 'node NodePingAgent.js enable'
+ * Uninstall the NodePingAgent with 'remove' argument such as 'node NodePingAgent.js remove'
  */
 
 var util = require('util'),
@@ -114,7 +115,7 @@ var config = {
     }
 };
 
-var heartbeatoffset = config.data.heartbeatoffset || Math.floor((Math.random() * 30) + 1) * 1000;
+var heartbeatoffset = config.data.heartbeatoffset || Math.floor((Math.random() * 20) + 1) * 1000;
 config.data.heartbeatoffset = heartbeatoffset;
 
 var getPluginData = function(data, callback) {
@@ -278,13 +279,15 @@ var postHeartbeat = function(data, retries) {
                                 if (body.error.indexOf('hrottl') > -1) {
                                     console.log(new Date().toISOString(),'Info: NodePingAgent: Heartbeat is throttled');
                                     return false;
+                                } else if (body.error.indexOf('No check found with that ID') > -1) {
+                                    console.log(new Date().toISOString(),'Info: NodePingAgent: Check does not exist - disabling');
+                                    updateConfig({check_enabled:false});
+                                    return false;
                                 }
                             }
                             retries++;
                             postHeartbeat(data, retries);
                         }
-                        
-                        
                     }
                     return true;
                 });
@@ -411,7 +414,7 @@ var updateConfig = function(newconfig) {
                 config.data[c] = newconfig[c];
             } else if (c == 'check_enabled') {
                 config.data[c] = newconfig[c];
-                updateConfig = true;
+                updatedConfig = true;
             } else {
                 // Other configs go in npconfig
                 //console.log('Setting',c, 'to', newconfig[c]);
@@ -419,7 +422,7 @@ var updateConfig = function(newconfig) {
                 updatedNpConfig = true;
             }
         }
-        if (updateConfig) {
+        if (updatedConfig) {
             config.persistConfig(config.data);
         }
         if (updatedNpConfig) {
@@ -501,7 +504,7 @@ var installOrEnable = function() {
     config.data.node_path = process.argv[0];
     config.data.agent_path = __dirname;
     config.data.agent_logpath = __dirname+path.sep+'log'+path.sep+'NodePingAgent.log';
-    config.data.heartbeatoffset = Math.floor((Math.random() * 30) + 1) * 1000;
+    config.data.heartbeatoffset = Math.floor((Math.random() * 20) + 1) * 1000;
     // Set cron job
     setCronJob();
     // save config
@@ -552,7 +555,7 @@ var disableOrRemove = function() {
 };
 
 if (!config.data.check_enabled) {
-    console.log(new Date().toISOString(),'Info: NodePingAgent is currenly disabled in ./config.json');
+    console.log(new Date().toISOString(),'Info: NodePingAgent is currenly disabled in config.json');
 }
 for (var p in config.data.plugins) {
     if (config.data.plugins[p].enabled) {
