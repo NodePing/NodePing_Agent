@@ -162,10 +162,7 @@ var check = exports.check = function(jobinfo){
     if (jobinfo.parameters.port) {
         port = jobinfo.parameters.port;
     }
-    var options = {version:version,timeout:timeout,retries:0,port:port};
-    if (jobinfo.parameters.snmpcom) {
-        options.community = jobinfo.parameters.snmpcom;
-    }
+    var options = {"version":version,timeout:timeout,retries:0,port:port};
     debugMessage('info',"check_snmp: target:"+jobinfo.targetip+" with options: "+sys.inspect(options)+" and oids are: "+sys.inspect(oidsToSend));
 
     var killit = false;
@@ -181,12 +178,14 @@ var check = exports.check = function(jobinfo){
         jobinfo.results.success = false;
         jobinfo.results.message = 'Timeout timer';
         resultobj.process(jobinfo);
-        session.close();
+        if (session) {
+            session.close();
+        }
         return true;
     }, timeout);
 
-    try{
-        var session = snmp.createSession (jobinfo.targetip, options);
+    try {
+        var session = snmp.createSession (jobinfo.targetip, jobinfo.parameters.snmpcom, options);
         session.get (oidsToSend, function (error, varbinds) {
             debugMessage('info',"check_snmp: get callback: "+sys.inspect(varbinds)+' and error: '+sys.inspect(error));
             if (!killit) {
