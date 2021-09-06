@@ -87,13 +87,23 @@ var connectToServer = function() {
     ws.on('ping', heartbeat);
 };
 
-var send = function(payload, cb) {
+var send = function(payload, cb, retry) {
+    retry = retry || 0;
     if (!cb) {
         cb = function(){};
     }
+    if (!ws || !ws.readyState) {
+        if (retry < 11) {
+            retry++;
+            return setTimeout(function() { return send(payload, cb, retry); }, 5000); // Wait 5 seconds for a reconnection.
+        } else {
+            console.log(new Date().toISOString(), 'No connection to diagnostic server after 1 minute.  Discarding diagnostic:',payload);
+            return cb('No connection to diagnostic server after 1 minute.  Discarding diagnostic.');
+        }
+    }
     var payload = JSON.stringify(payload);
     console.log(new Date().toISOString(),'Sending data to diagnostics server');
-    ws.send(payload, function(){
+    ws.send(payload, function() {
         console.log(new Date().toISOString(),'Data sent');
         return cb();
     });
