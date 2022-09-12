@@ -1,11 +1,11 @@
 /*!
  * NodePing
- * Copyright(c) 2020 NodePing LLC
+ * Copyright(c) 2011 NodePing LLC
  */
 
 /*!
  * check_ssh.js
- * Basic ssh check.
+ * ssh check
  */
 
 /**
@@ -18,50 +18,45 @@ var config = {
 
 var resultobj = require('../results.js');
 var sys = require('util');
-var spawn = require('child_process').spawn;
-var exec = require('child_process').exec;
+const { Client } = require('ssh2');
 var logger = console;
+var net = require('net');
+var dns = require('dns');
+var agentconfig = require('../../config.json');
+var querystring = require('querystring');
+var nputil = require("../../nputil");
 
-
-exports.check = function(jobinfo){
+var check = exports.check = function(jobinfo) {
 
     //logger.log('info',"Jobinfo passed to ping check: "+sys.inspect(jobinfo));
     //if(jobinfo.parameters.threshold) config.timeout = jobinfo.parameters.threshold;
     var timeout = config.timeout * 1;
-    if(jobinfo.parameters.threshold){
-        if(jobinfo.parameters.threshold < 1) jobinfo.parameters.threshold = '3';
+    if (jobinfo.parameters.threshold) {
+        if (jobinfo.parameters.threshold < 1) jobinfo.parameters.threshold = '3';
         timeout = parseInt(jobinfo.parameters.threshold) * 1000;
-        if (timeout > 90000) timeout = 90000;
+        if (timeout > 60000) timeout = 60000;
     }
     var validationerrors = [];
     var port =  22;
-    if(jobinfo.parameters.port){
+    if (jobinfo.parameters.port) {
         port = parseInt(jobinfo.parameters.port);
     }
     var justchecking = false;
-    var username = 'NodePingTest';
-    if(jobinfo.parameters.username){
-        // Validate
-        if ( jobinfo.parameters.username.match(/[^\w-]/) ) validationerrors.push("Username contains invalid characters.");
+    var username = 'nodeping';
+    if (jobinfo.parameters.username) {
         username = jobinfo.parameters.username;
-    }else{
+    } else {
         justchecking = true;
     }
     var password = 'NodePingPassword';
-    if(jobinfo.parameters.password){
-        // escape special characters
-        //logger.log('info',"check_ssh: Password: "+jobinfo.parameters.password);
-        password = jobinfo.parameters.password.replace(/\\/g, '\\\\');
-        password = password.replace(/\"/g, '\\"');
-        password = password.replace(/\`/g, '\\`');
-        //logger.log('info',"check_ssh: Password after escape: "+password);
-        if ( password.match(/[ \$]/ )) validationerrors.push("Password cannot contain spaces or dollar signs.");
+    if (jobinfo.parameters.password) {
+        password = jobinfo.parameters.password;
     } else {
         justchecking = true;
     }
     if ( jobinfo.parameters.target.match(/[ \$;"]/ )) validationerrors.push("Hostname cannot contain spaces, dollar signs, semicolons, or double quotes.");
-    jobinfo.results = {start:new Date().getTime()};
-    if(validationerrors.length > 0){
+    jobinfo.results = {start:new Date().getTime(), diag:{ssh:{}}};
+    if (validationerrors.length > 0) {
         //logger.log('info',"check_ssh: Invalid configuration");
         jobinfo.results.end = new Date().getTime();
         jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
@@ -70,102 +65,183 @@ exports.check = function(jobinfo){
         jobinfo.results.message = sys.inspect(validationerrors);
         resultobj.process(jobinfo, true);
         return true;
-    }else{
-        var command;
-        var timeoutSec = timeout/1000;
-        // Do we have a username and password?
-        if(justchecking){
-            // We don't expect to be able to log in but we need to get a proper failure.
-            command = 'ssh -t -t -p '+port.toString()+' -o ConnectTimeout='+timeoutSec.toString()+' -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o ChallengeResponseAuthentication=no -o KbdInteractiveAuthentication=no -o PasswordAuthentication=no -o KexAlgorithms=+diffie-hellman-group1-sha1,diffie-hellman-group14-sha1,diffie-hellman-group14-sha256,diffie-hellman-group16-sha512,diffie-hellman-group18-sha512,diffie-hellman-group-exchange-sha1,diffie-hellman-group-exchange-sha256,ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-sha2-nistp521,curve25519-sha256,curve25519-sha256@libssh.org -o Ciphers=+3des-cbc,aes128-cbc,aes192-cbc,aes256-cbc,rijndael-cbc@lysator.liu.se,aes128-ctr,aes192-ctr,aes256-ctr,aes128-gcm@openssh.com,aes256-gcm@openssh.com,chacha20-poly1305@openssh.com '+jobinfo.parameters.target;
-        }else{
-            // Use expect to try a login.
-            command = 'expect '+__dirname+'/sshExpectScript.exp '+jobinfo.parameters.target+' '+username+' "'+password+'" '+port.toString()+' '+timeoutSec.toString();
-        }
-        try{
-            //logger.log('info',"check_ssh: About to spawn: "+sys.inspect(jobinfo));
-            //logger.log('info',"check_ssh: command: "+sys.inspect(command));
-            var loggedin = false;
-            var killedit = false;
-            var ssho = exec(command, function(error, stdout, stderr){
-                if(killedit){
-                    return true;
+    }
+    var tryIpv6 =  function() {
+        jobinfo.dnsresolutionstart = new Date().getTime();
+        dns.resolve6(jobinfo.parameters.target, function (err, addresses) {
+            jobinfo.dnsresolutionend = new Date().getTime();
+            if (err) {
+                jobinfo.results.success = false;
+                jobinfo.results.end = new Date().getTime();jobinfo.results.end = new Date().getTime();
+                jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
+                jobinfo.results.statusCode = 'Error';
+                jobinfo.results.message = 'Error resolving '+jobinfo.parameters.target;
+                if (err.code === 'ENODATA') {
+                    jobinfo.results.message = 'No addresses found for '+jobinfo.parameters.target;
+                } else if (err.code === 'ENOTFOUND') {
+                    jobinfo.results.message = 'No DNS resolution for '+jobinfo.parameters.target;
                 }
-                killedit = true;
-                clearTimeout(timeoutid);
+                resultobj.process(jobinfo);
+            } else if (addresses && addresses[0]) {
+                jobinfo.targetip = addresses[0];
+                return check(jobinfo, true);
+            } else { // no resolution - empty array returned.
+                jobinfo.results.success = false;
                 jobinfo.results.end = new Date().getTime();
                 jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
-                if(error){
-                    //logger.log('error',"check_ssh: error: "+sys.inspect(error.toString()));
-                    if(justchecking){
-                        //logger.log('error',"check_ssh: Just Checking");
-                        // Might be ok - just a key login failure, which is expected.
-                        if(error.toString().indexOf('Permission denied') > -1){
-                            // I think this means we tried to log in and got a proper response.
-                            jobinfo.results.statusCode = 'Connected';
-                            jobinfo.results.message = 'SSH connected but login failed';
-                            jobinfo.results.success = true;
-                            resultobj.process(jobinfo);
-                            return true;
+                jobinfo.results.statusCode = 'Error';
+                jobinfo.results.message = 'No DNS addresses found for '+jobinfo.parameters.target;
+                resultobj.process(jobinfo);
+            }
+            return true;
+        });
+        return true;
+    };
+
+    if (!jobinfo.targetip) {
+        if (jobinfo.parameters.ipv6) {
+            if (!net.isIPv6(jobinfo.parameters.target)) {
+                return tryIpv6();
+            } else {
+                jobinfo.targetip = jobinfo.parameters.target;
+            }
+        } else {
+            // Resolve the ipv4
+            if (!net.isIPv4(jobinfo.parameters.target) && !net.isIPv6(jobinfo.parameters.target)) {
+                jobinfo.dnsresolutionstart = new Date().getTime();
+                dns.resolve4(jobinfo.parameters.target, function (err, addresses) {
+                    jobinfo.dnsresolutionend = new Date().getTime();
+                    if (err) {
+                        //logger.log('info','check_ssh: resolution error: '+sys.inspect(err));
+                        //logger.log('info','check_ssh: resolution addresses: '+sys.inspect(addresses));
+                        if (err.code === 'ENODATA' || err.code === 'ENOTFOUND') {
+                            return tryIpv6();
                         }
-                    }
-                    jobinfo.results.statusCode = 'Error';
-                    var errormessage = '';
-                    if (error.toString().indexOf('Connection refused') > -1) {
-                        errormessage = 'Connection refused';
-                    } else if (error.toString().indexOf('Connection timed out') > -1) {
-                        errormessage = 'Connection timed out';
-                    } else {
-                        errormessage = error.toString().replace(command,'').replace('/bin/sh -c ssh: ','');
-                    }
-                    jobinfo.results.message = errormessage;
-                    jobinfo.results.success = false;
-                    //logger.log('error',"check_ssh: Error to process: "+sys.inspect(jobinfo));
-                    resultobj.process(jobinfo);
-                    return true;
-                }else if(stdout){
-                    //logger.log('info',"check_ssh: stdout: "+sys.inspect(stdout.toString()));
-                    jobinfo.results.end = new Date().getTime();
-                    jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
-                    var data = stdout.toString();
-                    if(data.indexOf('Logged in') > -1){
-                        loggedin = true;
-                    }else if(data.indexOf('Login failed') > -1){
-                        loggedin = false;
-                        if(justchecking){
-                            // We don't care if the login failed.  SSH is working so we're good.
-                            //logger.log('info','check_ssh: Login but we do not care');
-                            jobinfo.results.statusCode = 'Connected';
-                            jobinfo.results.message = 'SSH connected but login failed';
-                            jobinfo.results.success = true;
-                        }else{
-                            //logger.log('info','check_ssh: Login failed and we care about that!');
-                            jobinfo.results.statusCode = 'Failed';
-                            jobinfo.results.message = 'SSH connected but login failed';
-                            jobinfo.results.success = false;
-                        }
-                        resultobj.process(jobinfo);
-                        return true;
-                    }
-                    if(data.indexOf('Failed to connect') > -1){
-                        jobinfo.results.statusCode = 'Failed to connect';
-                        jobinfo.results.message = 'Unable to connect';
                         jobinfo.results.success = false;
+                        jobinfo.results.end = new Date().getTime();
+                        jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
+                        jobinfo.results.statusCode = 'Error';
+                        jobinfo.results.message = 'Error resolving the hostname: '+jobinfo.parameters.target;
                         resultobj.process(jobinfo);
-                        return true;
+                    } else if (addresses && addresses.length && addresses[0]) {
+                        //logger.log('info','check_ssh: resolution addresses: '+sys.inspect(addresses));
+                        if (addresses[0]) {
+                            jobinfo.targetip = addresses[0];
+                            return check(jobinfo, true);
+                        }
+                    } else { // no ipv4 resolution - empty array returned.
+                        return tryIpv6();
                     }
-                    if(jobinfo.parameters.contentstring && jobinfo.parameters.contentstring != ''){
-                        if(data.indexOf(jobinfo.parameters.contentstring) > -1){
+                    return true;
+                });
+                return true;
+            } else {
+                jobinfo.targetip = jobinfo.parameters.target;
+            }
+        }
+    }
+
+    jobinfo.results.diag.ssh.serverip = jobinfo.targetip;
+    jobinfo.results.diag.ssh.port = port;
+
+    if (jobinfo.parameters.sshkey) {
+        justchecking = false;
+        // We need to authenticate with an SSH private key
+        if (!jobinfo.sshkeyinfo) {
+            return getSSHKeyInfo(jobinfo);
+        }
+    }
+
+    const conn = new Client();
+    var connectionOptions = {
+        host: jobinfo.targetip, 
+        port: port, 
+        username: username, 
+        readyTimeout: timeout,
+        /*
+        algorithms: {
+            cipher:{append:['3des-cbc','aes256-cbc','aes192-cbc','aes128-cbc','arcfour256','arcfour128','arcfour','blowfish-cbc','cast128-cbc']},
+            hmac:{append:['hmac-md5','hmac-sha2-256-96','hmac-sha2-512-96','hmac-ripemd160','hmac-sha1-96','hmac-md5-96']},
+            kex:{append:['diffie-hellman-group-exchange-sha1','diffie-hellman-group14-sha1','diffie-hellman-group1-sha1']}
+        },
+        */
+        authHandler: []
+    };
+    if (jobinfo.parameters.sshkey && jobinfo.sshkeyinfo) {
+        if (jobinfo.sshkeyinfo.error || !jobinfo.sshkeyinfo.key) {
+            jobinfo.results.end = new Date().getTime();
+            jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
+            jobinfo.results.success = false;
+            jobinfo.results.statusCode = 'error';
+            jobinfo.results.message = jobinfo.sshkeyinfo.error || 'SSH key error';
+            resultobj.process(jobinfo, true);
+            return true;
+        } else {
+            connectionOptions.privateKey = jobinfo.sshkeyinfo.key;
+            jobinfo.results.diag.ssh.UsePrivateKey = true;
+            connectionOptions.authHandler.push({type: 'publickey', username:username, key: jobinfo.sshkeyinfo.key})
+        }
+    } else {
+        if (justchecking) {
+            connectionOptions.authHandler.push({type: 'none', username:username});
+        } else {
+            connectionOptions.password = password;
+            jobinfo.results.diag.ssh.UsePassword = true;
+            connectionOptions.authHandler.push({type: 'password', username:username,password:password});
+            connectionOptions.authHandler.push({type: 'keyboard-interactive', username: username, prompt:(name, instructions, instructionsLang, prompts, finish) => { finish([password]);}});
+            connectionOptions.tryKeyboard = true;
+        }
+    }
+
+    
+    //connectionOptions.debug = function(debugstring){logger.log('info','SSH :: debug: '+sys.inspect(debugstring));};
+    
+
+    //logger.log('info','SSH :: connectionOptions: '+sys.inspect(connectionOptions));
+
+    var handshakeComplete = false;
+    var allDone = false;
+
+    conn.on('ready', () => {
+        if (allDone) {
+            //logger.log('error','SSH :: ready after allDone');
+            return true;
+        }
+        allDone = true;
+        //logger.log('info','SSH :: ready');
+        jobinfo.results.end = new Date().getTime();
+        jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
+        var finished = false;
+        var loggedin = true;
+        var shelldata = '';
+        conn.shell((err, stream) => {
+            if (err) {
+                //logger.log('error','SSH :: shell error: '+sys.inspect(err));
+                if (finished) return true;
+                finished = true;
+                jobinfo.results.statusCode = 'Shell error';
+                jobinfo.results.success = false;
+                resultobj.process(jobinfo);
+                conn.end();
+                return true;
+            } else {
+                stream.on('close', (code, signal) => {
+                    //logger.log('info','Shell Stream :: close :: code: ' + code + ', signal: ' + signal);
+                    if (finished) return true;
+                    finished = true;
+                    if (jobinfo.parameters.contentstring && jobinfo.parameters.contentstring != '') {
+                        if (shelldata.indexOf(jobinfo.parameters.contentstring) > -1) {
                             jobinfo.results.statusCode = 'Content found';
                             jobinfo.results.success = true;
                             jobinfo.results.message = 'Found content string in login reply';
-                            if(jobinfo.parameters.invert){
+                            if (jobinfo.parameters.invert) {
                                 jobinfo.results.success = false;
                             }
-                        }else{
+                        } else {
                             jobinfo.results.statusCode = 'Content missing';
                             jobinfo.results.message = 'Content string not found in login reply';
                             jobinfo.results.success = false;
-                            if(jobinfo.parameters.invert){
+                            if (jobinfo.parameters.invert) {
                                 jobinfo.results.success = true;
                             }
                         }
@@ -176,63 +252,156 @@ exports.check = function(jobinfo){
                     jobinfo.results.success = true;
                     resultobj.process(jobinfo);
                     return true;
-                }else if(stderr){
-                    //logger.log('error',"check_ssh: stderr: "+sys.inspect(stderr.toString()));
+                }).on('data', (data) => {
+                    //logger.log('info','Shell STDOUT: ' + data);
+                    shelldata += data;
+                    conn.end();
+                }).stderr.on('data', (data) => {
+                    //logger.log('info','Shell STDERR: ' + data);
+                    shelldata += data;
+                    if (finished) return true;
+                    finished = true;
+                    conn.end();
                     jobinfo.results.statusCode = 'Error';
                     jobinfo.results.message = 'Error: '+sys.inspect(stderr.toString());
                     jobinfo.results.success = false;
                     resultobj.process(jobinfo);
                     return true;
-                }
-                return true;
-            });
-            var timeoutid = setTimeout(function() {
-                if(killedit){
-                    return true;
-                }
-                killedit = true;
-                jobinfo.results.end = new Date().getTime();
-                jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
-                if(ssho){
-                    ssho.kill('SIGKILL');
-                    ssho = null;
-                }
-                jobinfo.results.statusCode = 'Timeout';
-                jobinfo.results.success = false;
-                jobinfo.results.message = 'Timeout';
-                if(loggedin){
-                    // We connected but we timed out?  Must be a busy login script.
-                    //logger.log('info',"check_ssh: setTimeout called after good login.");
-                    jobinfo.results.message = 'Timeout after successful login';
-                }
-                resultobj.process(jobinfo);
-                return true;
-            }, timeout+1000);
-        }catch(errr){
-            if(killedit){
-                return false;
+                });
             }
-            killedit = true;
-            if(timeoutid){
-                clearTimeout(timeoutid);
-            }
-            if(ssho){
-                try{
-                    ssho.kill('SIGKILL');
-                    ssho = null;
-                }catch(ssherr){
-                    logger.log('info',"check_ssh: We caught a big error trying to kill ssh on job "+jobinfo.jobid+": "+ssherr.toString());
-                }
-            }
-            logger.log('error',"check_ssh: Caught error on job "+jobinfo.jobid+": "+errr.toString());
-            jobinfo.results.end = new Date().getTime();
-            jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
-            jobinfo.results.success = false;
-            jobinfo.results.statusCode = 'error';
-            jobinfo.results.message = errr.toString();
-            resultobj.process(jobinfo);
+        });
+    }).on('close', () => {
+        //logger.log('info','SSH :: close');
+        if (allDone) {
+            //logger.log('error','SSH :: close after allDone';
             return true;
         }
+        allDone = true;
+        if (!jobinfo.results.end) {
+            jobinfo.results.end = new Date().getTime();
+            jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
+        }
+        jobinfo.results.statusCode = 'Error';
+        jobinfo.results.message = 'SSH connection closed by server';
+        jobinfo.results.success = false;
+        if (justchecking) {
+            //logger.log('error',"check_ssh: Just Checking");
+            jobinfo.results.statusCode = 'Connected';
+            jobinfo.results.success = true;
+        }
+        resultobj.process(jobinfo);
         return true;
+    }).on('error', (er) => {
+        if (allDone) {
+            //logger.log('error','SSH :: error after allDone: '+sys.inspect(er));
+            return true;
+        }
+        allDone = true;
+        //logger.log('error','SSH :: error: '+sys.inspect(er));
+        //logger.log('error','SSH :: error tostring: '+er.toString());
+        jobinfo.results.end = new Date().getTime();
+        jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
+        conn.end();
+        if (justchecking) {
+            //logger.log('error',"check_ssh: Just Checking");
+            // Might be ok - just a key login failure, which is expected.
+            if (er.level && er.level === 'client-authentication' || (er.level === 'client-timeout' && handshakeComplete)) {
+                // I think this means we tried to log in and got a proper response.
+                jobinfo.results.end = handshakeComplete;
+                jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
+                jobinfo.results.statusCode = 'Connected';
+                jobinfo.results.message = 'SSH connected but login failed';
+                jobinfo.results.success = true;
+                resultobj.process(jobinfo);
+                return true;
+            }
+        }
+        jobinfo.results.statusCode = 'Error';
+        var errormessage = er.toString();
+        if (errormessage.indexOf('ECONNREFUSED') > -1) {
+            errormessage = errormessage.replace('ECONNREFUSED','Connection refused');
+        } else if (er.level === 'client-timeout') {
+            jobinfo.results.statusCode = 'Timeout';
+            if (handshakeComplete) {
+                errormessage = 'handshake completed but auth not responding';
+            } else {
+                errormessage = 'Connection timed out';
+            }
+        } else if (errormessage === 'Error: All configured authentication methods failed') {
+            if (connectionOptions.privateKey) {
+                errormessage = 'SSH private key authentication failed';
+            } else {
+                errormessage = 'Password authentication failed'
+            }
+        } 
+        jobinfo.results.message = errormessage;
+        jobinfo.results.success = false;
+        //logger.log('error',"check_ssh: Error to process: "+sys.inspect(jobinfo));
+        resultobj.process(jobinfo);
+        return true;
+    }).on('banner', (banner, language) => {
+        //logger.log('info','SSH :: banner: '+sys.inspect(banner)+" : "+sys.inspect(language));
+        jobinfo.results.diag.ssh.banner = banner;
+    }).on('handshake', (negotiated) => {
+        //logger.log('info','SSH :: handshake: '+sys.inspect(negotiated));
+        jobinfo.results.diag.ssh.handshake = negotiated;
+        handshakeComplete = new Date().getTime();
+    }).on('keyboard-interactive', (name, instructions, instructionsLang, prompts, finish) => {
+        var answers = [];
+        for (var i in prompts) {
+            if (prompts[i].prompt.toLowerCase() === 'password') {
+                answers.push(password);
+            }
+        }
+        return finish(answers);
+    });
+    try {
+        conn.connect(connectionOptions);
+    } catch (ex) {
+        if (allDone) {
+            //logger.log('error','SSH :: caught error after allDone: '+sys.inspect(ex));
+            return true;
+        }
+        jobinfo.results.end = new Date().getTime();
+        jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
+        jobinfo.results.success = false;
+        jobinfo.results.statusCode = 'error';
+        jobinfo.results.message = ex.toString();
+        resultobj.process(jobinfo);
+        return true;
+    }
+    return true;
+};
+
+var debugMessage = function(messageType, message) {
+    if (config.debug) {
+        logger.log(messageType,message);
+    }
+}
+
+var getSSHKeyInfo = function(jobinfo, retry) {
+    retry = retry || 0;
+    debugMessage('info',"check_ssh: fetching ssh key info from local config: "+jobinfo.parameters.sshkey);
+    if (agentconfig && agentconfig.sshkeys && agentconfig.sshkeys[jobinfo.parameters.sshkey]) {
+        var fs = require("fs");
+        if (fs.existsSync(agentconfig.sshkeys[jobinfo.parameters.sshkey])) {
+            try {
+                var mykey = fs.readFileSync(agentconfig.sshkeys[jobinfo.parameters.sshkey], "utf8");
+                debugMessage('error',"check_ssh: ssh key unreadable: "+agentconfig.sshkeys[jobinfo.parameters.sshkey]);
+                jobinfo.sshkeyinfo = {key:mykey};
+            } catch (err) {
+                debugMessage('error',"check_ssh: ssh key unreadable: "+agentconfig.sshkeys[jobinfo.parameters.sshkey]);
+                jobinfo.sshkeyinfo = {error:'key file unreadable on AGENT'};
+            }
+            return check(jobinfo);
+        } else {
+            debugMessage('error',"check_ssh: ssh key file does not exist: "+agentconfig.sshkeys[jobinfo.parameters.sshkey]);
+            jobinfo.sshkeyinfo = {error:'key file does not exist on AGENT'};
+            return check(jobinfo);
+        }
+    } else {
+        debugMessage('error',"check_ssh: missing ssh key path in local config: "+jobinfo.parameters.sshkey);
+        jobinfo.sshkeyinfo = {error:'no key data in AGENT config'};
+        return check(jobinfo);
     }
 };
