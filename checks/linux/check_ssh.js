@@ -174,6 +174,7 @@ var check = exports.check = function(jobinfo) {
             jobinfo.results.success = false;
             jobinfo.results.statusCode = 'error';
             jobinfo.results.message = jobinfo.sshkeyinfo.error || 'SSH key error';
+            delete jobinfo.sshkeyinfo;
             resultobj.process(jobinfo, true);
             return true;
         } else {
@@ -208,6 +209,7 @@ var check = exports.check = function(jobinfo) {
             return true;
         }
         allDone = true;
+        if (jobinfo.sshkeyinfo) delete jobinfo.sshkeyinfo;
         //logger.log('info','SSH :: ready');
         jobinfo.results.end = new Date().getTime();
         jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
@@ -281,6 +283,7 @@ var check = exports.check = function(jobinfo) {
             jobinfo.results.end = new Date().getTime();
             jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
         }
+        if (jobinfo.sshkeyinfo) delete jobinfo.sshkeyinfo;
         jobinfo.results.statusCode = 'Error';
         jobinfo.results.message = 'SSH connection closed by server';
         jobinfo.results.success = false;
@@ -302,6 +305,7 @@ var check = exports.check = function(jobinfo) {
         jobinfo.results.end = new Date().getTime();
         jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
         conn.end();
+        if (jobinfo.sshkeyinfo) delete jobinfo.sshkeyinfo;
         if (justchecking) {
             //logger.log('error',"check_ssh: Just Checking");
             // Might be ok - just a key login failure, which is expected.
@@ -362,6 +366,8 @@ var check = exports.check = function(jobinfo) {
             //logger.log('error','SSH :: caught error after allDone: '+sys.inspect(ex));
             return true;
         }
+        allDone = true;
+        if (jobinfo.sshkeyinfo) delete jobinfo.sshkeyinfo;
         jobinfo.results.end = new Date().getTime();
         jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
         jobinfo.results.success = false;
