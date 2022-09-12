@@ -31,9 +31,13 @@ Depending on the check types running on the AGENT, you'll need the following ins
 
 ## SSH checks with local keys
 
-The SSH check in the AGENT supports using local SSH keys for authentication. Set the 'sshkey' element in the NodePing SSH check to a 5-character, upper-case string (example: "PHYNW").  You can do that using the API. In the AGENT config.json file, add an object entry for that sshkey string with a value of the full path of the SSH key file.
+The SSH check in the AGENT supports using local SSH keys for authentication. You'll need to make modifications to both the SSH check you want to run on the AGENT as well as a config file on the AGENT itself.
 
-Example of config.json that has a local SSH key configured
+Modifying the SSH Check: Using the API, set the check's 'sshkey' element to a 5-character, uppercase string (example: "PHYNW").
+
+Modifying the AGENT: In the AGENT config.json file, add a key/value entry to the 'sshkeys' configuration that matches the string value you set on the SSH check and a value of the full path of the SSH key file.
+
+Example of AGENT config.json that has a local SSH key configured
 
 ``` json
 {
