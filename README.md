@@ -28,7 +28,6 @@ Depending on the check types running on the AGENT, you'll need the following ins
 
 * AUDIO - if using the volume detection feature you'll need to install 'ffmpeg'
 * PING - 'ping' must be installed and able to be run by the user that runs the AGENT software
-* SSH - 'openssh-client' (ssh) and 'expect' must be installed.
 
 ## Installation
 
