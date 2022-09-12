@@ -29,6 +29,25 @@ Depending on the check types running on the AGENT, you'll need the following ins
 * AUDIO - if using the volume detection feature you'll need to install 'ffmpeg'
 * PING - 'ping' must be installed and able to be run by the user that runs the AGENT software
 
+## SSH checks with local keys
+
+The SSH check in the AGENT supports using local SSH keys for authentication. Set the 'sshkey' element in the NodePing SSH check to a 5-character, upper-case string (example: "PHYNW").  You can do that using the API. In the AGENT config.json file, add an object entry for that sshkey string with a value of the full path of the SSH key file.
+
+Example of config.json that has a local SSH key configured
+
+``` json
+{
+    "check_id": "<Your NodePing Check ID>",
+    "check_token": "<Your NodePing Check Token>",
+    "check_enabled": true,
+    "node_path": "/usr/local/bin/node",
+    "agent_path": "/home/youruser/NodePing_Agent",
+    "agent_logpath": "/home/youruser/NodePing_Agent/log/NodePingAgent.log",
+    "sshkeys": {"PHYNW":"/home/youruser/.ssh/id_rsa"},
+    "plugins": {}
+}
+```
+
 ## Installation
 
 1. Create the AGENT check in NodePing using the web UI or the API.  Make note of the check ID and the check token that is generated. You can find that info in the check drawer by clicking on the check label.
