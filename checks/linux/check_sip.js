@@ -125,7 +125,7 @@ exports.check = function(jobinfo){
                     if (rs.status) {
                         jobinfo.results.statusCode = rs.status;
                         jobinfo.results.message = rs.status.toString();
-                        if (rs.status > 399) {
+                        if (rs.status > 499) {
                             jobinfo.results.success = false;
                             jobinfo.results.message = 'Unknown error';
                         }
