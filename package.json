@@ -8,6 +8,7 @@
         "ipaddr.js": "1.1.0",
         "jsftp": "0.4.7",
         "moment": "^2.24.0",
+        "mtrext": "^1.0.5",
         "native-dns": "0.7.0",
         "net-snmp": "2.0.0",
         "ntp-client": "0.5.3",
