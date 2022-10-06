@@ -66,7 +66,7 @@ var check = function(jobinfo, retry, cb) {
         jobinfo.results.success = false;
         jobinfo.results.statusCode = 'error';
         jobinfo.results.message = 'Invalid target';
-        processresults(jobinfo,true, cb);
+        resultobj.process(jobinfo, true);
         return true;
     }
 
@@ -176,7 +176,7 @@ var check = function(jobinfo, retry, cb) {
             jobinfo.results.diag.mtr.data = err.toString();
             jobinfo.results.success = false;
             jobinfo.results.message = 'error';
-            processresults(jobinfo,false);
+            resultobj.process(jobinfo);
             if (mtr) {
                 mtr = null;
             }
@@ -198,7 +198,7 @@ var check = function(jobinfo, retry, cb) {
         jobinfo.results.statusCode = 'Timeout';
         jobinfo.results.success = false;
         jobinfo.results.message = 'setTimeout';
-        processresults(jobinfo,false,cb);
+        resultobj.process(jobinfo);
         return true;
     }, timeout);
 
