@@ -21,7 +21,7 @@ var dns = require('dns');
 var net = require('net');
 var resultobj = require('../results.js');
 var sys = require('util');
-var nputil = require('../nputil');
+var nputil = require('../../nputil');
 var logger = console;
 
 var check = function(jobinfo){
@@ -185,7 +185,7 @@ var check = function(jobinfo){
                 jobinfo.results.message = 'Connection Error: '+err.toString();
                 if (jobinfo.results.message.indexOf('ECONNREFUSED') > -1) {
                     jobinfo.results.message = jobinfo.results.message.replace('Error: connect ECONNREFUSED','connection actively refused by firewall');
-                } else if (jobinfo.results.message.indexOf('ER_ACCESS_DENIED_ERROR') > -1) {
+                } else if (jobinfo.results.message.indexOf('Access denied') > -1) {
                     if (!database) {
                         // No database given so we're just checking connection.
                         jobinfo.results.statusCode = 'Responded';
@@ -200,6 +200,16 @@ var check = function(jobinfo){
             if (connection) connection.destroy();
             return true;
         }
+        if (!database) {
+            // No database given so we're just checking connection.
+            jobinfo.results.statusCode = 'Responded';
+            jobinfo.results.success = true;
+            jobinfo.results.message = 'Connected';
+            resultobj.process(jobinfo);
+            if (connection) connection.destroy();
+            return true;
+        }
+
         var query = jobinfo.parameters.query || 'SELECT NOW()';
         debugMessage('info','check_mysql: query will be: '+sys.inspect(query));
         jobinfo.results.diag.mysql.query = query;
