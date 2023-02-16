@@ -81,6 +81,10 @@ var check = function(jobinfo){
         connectionString: jobinfo.parameters.target
     };
 
+    if (!jobinfo.parameters.verify || jobinfo.parameters.verify === 'false') {
+        pgsqlOptions.ssl = {rejectUnauthorized: false};
+    } 
+
     var pgsql = new Client(pgsqlOptions);
 
     var timeoutid = setTimeout(function() {

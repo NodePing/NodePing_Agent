@@ -22,7 +22,7 @@ var pop3client = require('poplib');
 var logger = console;
 
 exports.check = function(jobinfo){
-    //debugMessage('info',"Jobinfo passed to ping check: "+sys.inspect(jobinfo));
+    //debugMessage('info',"Jobinfo passed to pop3 check: "+sys.inspect(jobinfo));
     var timeout =  config.timeout *1;
     if(jobinfo.parameters.threshold) timeout = parseInt(jobinfo.parameters.threshold)*1000;
     if (timeout > 90000) timeout = 90000;
