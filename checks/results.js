@@ -21,18 +21,20 @@ var config = {
     npconfig: require('..'+path.sep+'npconfig.json'),
     checkdata: require('..'+path.sep+'checkdata.json'),
     writingCheckConfig: false,
-    updateCheckData: function(checkinfo) {
-        if (checkinfo && checkinfo._id) {
-            checkdata[checkinfo._id] = checkinfo;
-            return config.persistCheckData();
-        }
-        return false;
-    },
-    persistCheckData: function() {
-        console.log('Persisting check data to disk');
+    persistCheckData: function(retry) {
+        retry = retry || 0;
+        //console.log('Persisting check data to disk - retry = '+retry.toString());
         if (config.writingCheckConfig) {
-            console.log('Already writing check data file - giving up.');
-            return false;
+            if (retry > 5) {
+                console.log('Already writing check data file - We retried 5 times. Giving up.');
+                return true;
+            } else {
+                retry++;
+                //console.log('Already writing check data file - retrying in 1.5 seconds. Retry = '+retry.toString());
+                return setTimeout(function(){
+                    return config.persistCheckData(retry);
+                },1500);
+            }
         } 
         config.writingCheckConfig = true;
         var prettyjsoncheckdata = JSON.stringify(checkdata, null, 6);
@@ -41,7 +43,7 @@ var config = {
             if (err) {
                 console.log('Check data write error:',err);
             } else {
-                console.log('Check data written');
+                //console.log('Check data written');
             }
             config.writingCheckConfig = false;
         });
@@ -129,7 +131,7 @@ exports.process = function(jobinfo, override) {
         tryMe = parseInt(jobinfo.parameters.sens);
     }
     var upOrDown = (jobinfo.results.success) ? 'up' : 'down';
-    if (override || tryMe < 1) {
+    if (override) {
         finalize(jobinfo);
         return true;
     }
@@ -242,16 +244,9 @@ function finalize(jobinfo){
     jobinfo.location[jobinfo.results.start] = config.data.check_id;
 
     // Is this a 'down' result?
-    if (!jobinfo.results.success && (!jobinfo.hasOwnProperty('state') || (jobinfo.state && jobinfo.state !== '0' && jobinfo.state !== 'false'))) {
+    if (!jobinfo.results.success && (!jobinfo.firstdown || jobinfo.firstdown === '0') && (!jobinfo.hasOwnProperty('state') || (jobinfo.state && jobinfo.state !== '0' && jobinfo.state !== 'false'))) {
         jobinfo.firstdown = jobinfo.results.start;
-        console.log(new Date(),"info", 'results: setting firstdown: '+sys.inspect(jobinfo));
-    }
-    // Do we want to send this result to rhp?
-    if (!jobinfo.dontsend || (jobinfo.dontsend && jobinfo.dontsend.toString() == 'false')) {
-        postToResultsHandler(jobinfo);
-    }
-    // Is this a 'down' result?  Set the eventinfo
-    if (jobinfo.state && jobinfo.state !== 'false' && jobinfo.results.success === false) {
+        //console.log(new Date(),"info", 'results: setting firstdown: '+sys.inspect(jobinfo));
         jobinfo.eventinfo = {code:'', message:'',start:jobinfo.results.start, type:'down'};
         if (jobinfo.results.statusCode) {
             jobinfo.eventinfo.code = jobinfo.results.statusCode;
@@ -261,8 +256,16 @@ function finalize(jobinfo){
         }
     } else if ((!jobinfo.state || jobinfo.state === 'false') && jobinfo.results.success === true && jobinfo.eventinfo && jobinfo.eventinfo.type && jobinfo.eventinfo.type === 'down') {
         // Up event, close the event
+        //console.log(new Date(),"info", 'results: removing firstdown cause passing: '+sys.inspect(jobinfo));
         jobinfo.eventinfo.end = jobinfo.results.start;
         jobinfo.firstdown = false;
+        if (jobinfo.results.diag) delete jobinfo.results.diag;
+    } else {
+        if (jobinfo.results.diag) delete jobinfo.results.diag;
+    }
+    // Do we want to send this result to rhp?
+    if (!jobinfo.dontsend || (jobinfo.dontsend && jobinfo.dontsend.toString() == 'false')) {
+        postToResultsHandler(jobinfo);
     }
     // Reschedule this check.
     rescheduleCheck(jobinfo);
@@ -270,7 +273,7 @@ function finalize(jobinfo){
 }
 
 function recheck(jobinfo){
-    console.log('recheck:',jobinfo);
+    //console.log('recheck:',jobinfo);
     if (!jobinfo.location) {
         jobinfo.location = {};
     }
@@ -311,6 +314,7 @@ function rescheduleCheck(jobinfo) {
     if (jobinfo.runat < herenow) {
         jobinfo.runat = herenow - 5000;
     }
+    console.log(new Date(),'Updating run at for',jobinfo._id, jobinfo.runat);
     jobinfo.retry = 0;
     jobinfo.state = (jobinfo.results.success) ? 1 : 0;
     delete(jobinfo.results);
@@ -322,17 +326,8 @@ function rescheduleCheck(jobinfo) {
         jobinfo.eventinfo = {};
     }
     config.checkdata[jobinfo._id] = jobinfo;
-    updateRunAt(jobinfo._id, jobinfo.runat);
-    return true;
+    return config.persistCheckData();
 }
-
-function updateRunAt(jobid, runat) {
-    console.log(new Date(),'Updating run at for',jobid, runat);
-    if (config && config.checkdata && config.checkdata[jobid]) {
-        config.checkdata[jobid].runat =  runat;
-        config.updateCheckData(config.checkdata[jobid]);
-    }
-};
 
 function postToResultsHandler(jobinfo, rh) {
     //console.log(new Date(),'postToResultsHandler',jobinfo)
@@ -443,7 +438,7 @@ function postToResultsHandler(jobinfo, rh) {
 function retryPostToResultshandler(jobinfo) {
     if (jobinfo.hasOwnProperty('postretry')) {
         if (jobinfo.postretry > 8) {
-            console.log(new Date(),'error',"rhpsubmit: unable to submit results final: "+sys.inspect(jobinfo));
+            console.log(new Date(),'error',"rhpsubmit: unable to submit results. Giving up: "+sys.inspect(jobinfo));
             return true;
         } else {
             jobinfo.postretry = jobinfo.postretry +1;
