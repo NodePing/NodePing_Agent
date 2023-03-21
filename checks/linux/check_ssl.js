@@ -186,7 +186,7 @@ var check = function(jobinfo){
                     jobinfo.results.statusCode = 'invalid';
                 }
                 resultobj.process(jobinfo);
-                s = null;
+                s.destroy();
                 return true;
             });
             s.on("error",function(error){
@@ -205,6 +205,9 @@ var check = function(jobinfo){
                 jobinfo.results.success = false;
                 jobinfo.results.message = "Error "+error.toString();
                 resultobj.process(jobinfo);
+                if (s) {
+                    s.destroy();
+                }
                 return false;
             });
         }catch(error){
@@ -216,6 +219,10 @@ var check = function(jobinfo){
             jobinfo.results.success = false;
             jobinfo.results.message = "Caught "+error.toString();
             resultobj.process(jobinfo);
+            if (s) {
+                s.destroy();
+            }
+            return true;
         }
         return true;
     }
