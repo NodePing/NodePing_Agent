@@ -277,25 +277,6 @@ var check = function(jobinfo){
         debugMessage('info','check_redis: end called on '+sys.inspect(jobinfo.parameters.target));
         redis.disconnect(false);
     });
-    redis.on('authError', function(err) {
-        debugMessage('info','check_redis: authError called on '+sys.inspect(jobinfo.parameters.target+' : '+sys.inspect(err)));
-        if (completed) {
-            return true;
-        }
-        completed = true;
-        clearTimeout(timeoutid);
-        redis.disconnect(false);
-        jobinfo.results.end = new Date().getTime();
-        jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
-        jobinfo.results.statusCode = 'Error';
-        jobinfo.results.success = false;
-        jobinfo.results.message = 'authError: '+err.toString();
-        if (jobinfo.results.message.indexOf('called without any password configured') > -1) {
-            jobinfo.results.message = 'AUTH called without any password configured for that user.';
-        }
-        resultobj.process(jobinfo);
-        return true;
-    });
     return true;
 };
 
