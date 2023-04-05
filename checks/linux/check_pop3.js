@@ -17,7 +17,7 @@ var config = {
 
 var resultobj = require('../results.js');
 var sys = require('util');
-var pop3client = require('poplib');
+var pop3client = require('nodeping-poplib');
 
 var logger = console;
 

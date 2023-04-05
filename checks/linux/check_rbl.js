@@ -19,7 +19,7 @@ var config = {
 var resultobj = require('../results.js');
 var sys = require('util');
 var logger = console;
-var ndns = require('native-dns');
+var ndns = require('nodeping-dns');
 var ipaddr = require('ipaddr.js');
 
 var check = exports.check = function(jobinfo){
