@@ -464,6 +464,7 @@ var processPlaylist = function(targetinfo, jobinfo, playlisttype) {
                                         } else if (lines[l].indexOf('#') !== 0 && lines[l] !== '') {
                                             //logger.log('info','check_audio: m3u playlist URL found: '+sys.inspect(lines[l]));
                                             found = lines[l];
+                                            break;
                                         }
                                     }
                                     if (found) {
