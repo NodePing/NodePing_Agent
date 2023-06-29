@@ -199,6 +199,9 @@ var check = function(jobinfo){
                     jobinfo.parameters.forceSSLv3 = true;
                     return check(jobinfo);
                 }
+                if (error.toString().indexOf('wrong version') > -1) {
+                    error = 'TLS connection error'
+                }
                 jobinfo.results.end = new Date().getTime();
                 jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
                 jobinfo.results.statusCode = 'Error';
