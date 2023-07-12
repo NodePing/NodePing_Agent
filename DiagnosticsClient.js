@@ -192,12 +192,16 @@ var restartWSConnection = function(retry) {
         if (runningTool) {
             console.log(new Date().toISOString(),'Tool running - waiting to restart websocket connection.');
             retry++;
-            setTimeout(function(){
+            setTimeout(function() {
                 restartWSConnection(retry);
             },30000);
-        } else {
+        } else if (ws && typeof ws.close === 'function') {
             console.log(new Date().toISOString(),'Restarting websocket connection');
             ws.close();
+        } else {
+            console.log(new Date().toISOString(),'No websocket connection. Restarting the client.');
+            reconnectcount = 0;
+            startClient();
         }
     }
     return true;
