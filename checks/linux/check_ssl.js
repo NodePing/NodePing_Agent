@@ -106,20 +106,21 @@ var check = function(jobinfo){
                     }
                     var done = false;
                     var domainmatch = false;
+                    var domainToCheck = options.servername.toLowerCase();
                     // Check domain match.
-                    if(targetinfo.hostname.toLowerCase() != certdomain){
+                    if(domainToCheck != certdomain){
                         if(wildcard){
                             // Wildcard cert.  Check base domains.
                             var certBaseDomain = '.'+certdomain;
                             debugMessage('info',"check_ssl: certbasedomain: "+sys.inspect(certBaseDomain));
-                            var pos = targetinfo.hostname.indexOf(certBaseDomain);
+                            var pos = domainToCheck.indexOf(certBaseDomain);
                             if(pos > -1){
                                 // Is it on the end of the string?
                                 //logger.log('info',"check_ssl: pos: "+sys.inspect(pos));
                                 //logger.log('info',"check_ssl: hostlength: "+sys.inspect(targetinfo.host.length));
                                 if(targetinfo.hostname.length - certBaseDomain.length == pos){
                                     // Looks like a valid wildcard cert.
-                                    debugMessage('info',"check_ssl: Wildcard match: "+targetinfo.hostname+' and '+certBaseDomain);
+                                    debugMessage('info',"check_ssl: Wildcard match: "+domainToCheck+' and '+certBaseDomain);
                                     domainmatch = true;
                                 }
                             }
@@ -127,9 +128,9 @@ var check = function(jobinfo){
                         if (!domainmatch && !done && cert.subjectaltname) {
                             // Check UNCC (alt subject) certs.
                             debugMessage('info',"check_ssl: subectaltname: "+sys.inspect(cert.subjectaltname));
-                            if(cert.subjectaltname.toLowerCase().indexOf(targetinfo.hostname) < 0){
+                            if(cert.subjectaltname.toLowerCase().indexOf(domainToCheck) < 0){
                                 // Look for the wildcard of this domain in the subjectaltname
-                                var domainparts = targetinfo.hostname.toLowerCase().split('.');
+                                var domainparts = domainToCheck.split('.');
                                 debugMessage('info',"check_ssl: Domain parts: "+sys.inspect(domainparts));
                                 domainparts[0] = '*';
                                 var wildcardToLookFor = domainparts.join('.');
