@@ -329,6 +329,10 @@ var check = function(jobinfo, retry) {
                     jobinfo.results.statusCode = 'Error';
                     jobinfo.results.success = false;
                     jobinfo.results.message = e.toString();
+                    if (jobinfo.results.message.indexOf('alert number 80' > 0)) {
+                        // HTTPS that isn't running TLS
+                        jobinfo.results.message = 'https URL that is not running SSL';
+                    }
                     resultobj.process(jobinfo);
                 }
                 return true;
