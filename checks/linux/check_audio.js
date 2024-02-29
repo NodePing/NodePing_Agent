@@ -39,7 +39,7 @@ exports.check = check = function(jobinfo){
         jobinfo.results.success = false;
         jobinfo.results.statusCode = 'error';
         jobinfo.results.message = 'Invalid URL';
-        resultobj.process(jobinfo, true);
+        resultobj.process(cleanJobinfo(jobinfo), true);
         return true;
     } else {
         if (!jobinfo.originaltarget) {
@@ -55,7 +55,7 @@ exports.check = check = function(jobinfo){
             jobinfo.results.success = false;
             jobinfo.results.statusCode = 'error';
             jobinfo.results.message = 'URL will not parse: '+error;
-            resultobj.process(jobinfo, true);
+            resultobj.process(cleanJobinfo(jobinfo), true);
             return true;
         }
 
@@ -87,7 +87,7 @@ exports.check = check = function(jobinfo){
             jobinfo.results.statusCode = 'Timeout';
             jobinfo.results.success = false;
             jobinfo.results.message = 'Timeout';
-            resultobj.process(jobinfo);
+            resultobj.process(cleanJobinfo(jobinfo));
             return true;
         }, timeout);
         try {
@@ -118,7 +118,7 @@ exports.check = check = function(jobinfo){
                 jobinfo.results.statusCode = 'Timeout';
                 jobinfo.results.success = false;
                 jobinfo.results.message = 'Timeout';
-                resultobj.process(jobinfo);
+                resultobj.process(cleanJobinfo(jobinfo));
                 return true;
             });
             stream.on('response', function(res) {
@@ -139,7 +139,7 @@ exports.check = check = function(jobinfo){
                         jobinfo.results.success = false;
                         jobinfo.results.message = 'Too many redirects';
                         jobinfo.results.statusCode = res.statusCode;
-                        resultobj.process(jobinfo);
+                        resultobj.process(cleanJobinfo(jobinfo));
                         return true;
                     } else {
                         if (!jobinfo.redirectcount) {
@@ -232,7 +232,7 @@ exports.check = check = function(jobinfo){
                     };
                 }
                 if (jobinfo.originaltarget) jobinfo.parameters.target = jobinfo.originaltarget;
-                resultobj.process(jobinfo);
+                resultobj.process(cleanJobinfo(jobinfo));
                 return true;
             });
             stream.on('error', function(error) {
@@ -249,7 +249,7 @@ exports.check = check = function(jobinfo){
                     jobinfo.results.success = false;
                     jobinfo.results.message = error.toString();
                     if (jobinfo.originaltarget) jobinfo.parameters.target = jobinfo.originaltarget;
-                    resultobj.process(jobinfo);
+                    resultobj.process(cleanJobinfo(jobinfo));
                 }
                 return true;
             });
@@ -264,7 +264,7 @@ exports.check = check = function(jobinfo){
                 jobinfo.results.success = false;
                 jobinfo.results.message = "Caught "+ec.toString();
                 if (jobinfo.originaltarget) jobinfo.parameters.target = jobinfo.originaltarget;
-                resultobj.process(jobinfo);
+                resultobj.process(cleanJobinfo(jobinfo));
                 killit = true;
             }
             return true;
@@ -315,7 +315,7 @@ var checkForDeadAir = function(jobinfo){
                 jobinfo.results.message = 'Unable to get detect volume level - please contact support.';
             }
             if (jobinfo.originaltarget) jobinfo.parameters.target = jobinfo.originaltarget;
-            resultobj.process(jobinfo);
+            resultobj.process(cleanJobinfo(jobinfo));
         })
         .on('error', function(err) {
             //logger.log("error",'Audio Stream: volume check "error" event: '+sys.inspect(err));
@@ -323,7 +323,7 @@ var checkForDeadAir = function(jobinfo){
             jobinfo.results.success = false;
             jobinfo.results.message = 'Unable to get detect volume level - Not a valid audio stream';
             if (jobinfo.originaltarget) jobinfo.parameters.target = jobinfo.originaltarget;
-            resultobj.process(jobinfo);
+            resultobj.process(cleanJobinfo(jobinfo));
         })
         .saveToFile('/dev/null'); // cause we don't care about this data
 };
@@ -348,7 +348,7 @@ var processPlaylist = function(targetinfo, jobinfo, playlisttype) {
             jobinfo.results.statusCode = 'error';
             jobinfo.results.message = 'Invalid protocol';
             if (jobinfo.originaltarget) jobinfo.parameters.target = jobinfo.originaltarget;
-            resultobj.process(jobinfo, true);
+            resultobj.process(cleanJobinfo(jobinfo), true);
             return true;
         }
     } else {
@@ -358,7 +358,7 @@ var processPlaylist = function(targetinfo, jobinfo, playlisttype) {
         jobinfo.results.statusCode = 'error';
         jobinfo.results.message = 'Invalid URL';
         if (jobinfo.originaltarget) jobinfo.parameters.target = jobinfo.originaltarget;
-        resultobj.process(jobinfo, true);
+        resultobj.process(cleanJobinfo(jobinfo), true);
         return true;
     }
     targetinfo.agent = false;
@@ -386,7 +386,7 @@ var processPlaylist = function(targetinfo, jobinfo, playlisttype) {
             jobinfo.results.success = false;
             jobinfo.results.message = 'Timeout';
             if (jobinfo.originaltarget) jobinfo.parameters.target = jobinfo.originaltarget;
-            resultobj.process(jobinfo);
+            resultobj.process(cleanJobinfo(jobinfo));
             return true;
         }, timeout);
         var req = agent.request(targetinfo, function(res) {
@@ -409,7 +409,7 @@ var processPlaylist = function(targetinfo, jobinfo, playlisttype) {
                     jobinfo.results.success = false;
                     jobinfo.results.message = '3MB file size exceeded on playlist';
                     if (jobinfo.originaltarget) jobinfo.parameters.target = jobinfo.originaltarget;
-                    resultobj.process(jobinfo);
+                    resultobj.process(cleanJobinfo(jobinfo));
                     req.abort();
                     return true;
                 }
@@ -428,7 +428,63 @@ var processPlaylist = function(targetinfo, jobinfo, playlisttype) {
                                                 httpserverip:req.connection.remoteAddress}
                                            };
                     //logger.log('info','Diag: '+sys.inspect(jobinfo.results.diag));
-                    if (res.statusCode >=200 && res.statusCode < 399) {
+                    if (res.statusCode >=300 && res.statusCode < 400) {
+                        // Have we redirected too many times already?
+                        if (jobinfo.redirectcount && jobinfo.redirectcount > 4) {
+                            // Too many redirects.
+                            jobinfo.results.success = false;
+                            jobinfo.results.message = 'Too many redirects';
+                            jobinfo.results.statusCode = res.statusCode;
+                            resultobj.process(cleanJobinfo(jobinfo));
+                            return true;
+                        } else {
+                            if (!jobinfo.redirectcount) {
+                                jobinfo.redirectcount = 1;
+                            } else {
+                                jobinfo.redirectcount = jobinfo.redirectcount + 1;
+                            }
+                            // Set the new redirecttarget and try again.
+                            var redirect = res.headers.location;
+                            if (redirect.indexOf('https:') === 0 || redirect.indexOf('http:') === 0 || redirect.indexOf('HTTP:') === 0 || redirect.indexOf('HTTPS:') === 0) {
+                                // Absolute redirect.
+                            } else {
+                                // relative redirect - need to get the right base url (either parameters.target or a previous redirect target)
+                                var thetarget = jobinfo.redirecttarget || jobinfo.originaltarget || jobinfo.parameters.target;
+                                targetinfo = url.parse(thetarget);
+                                if (redirect.indexOf('/') === 0) {
+                                    // Replace the whole pathname
+                                    var toreplace = targetinfo.pathname;
+                                    if (targetinfo.search) {
+                                        toreplace = toreplace + targetinfo.search;
+                                    }
+                                    var pos = targetinfo.href.lastIndexOf(toreplace);
+                                    if (pos > 7) {
+                                        redirect = targetinfo.href.substring(0, pos) + redirect;
+                                    } else {
+                                        logger.log('error',"check_audio: Weird placement for the last instance of: "+sys.inspect(toreplace)+" in "+sys.inspect(redirect)+' for check '+jobinfo.jobid);
+                                    }
+                                } else {
+                                    // tack this redirect on the end of the current path - removing the search, if any.
+                                    if (targetinfo.pathname.slice(-1) !== '/') {
+                                        // strip off the last filename if any.
+                                        var pos = targetinfo.href.lastIndexOf('/');
+                                        if (pos > 7) {
+                                            targetinfo.href = targetinfo.href.substring(0, pos);
+                                        }
+                                        redirect = '/'+redirect;
+                                    }
+                                    if (targetinfo.search) {
+                                        // Strip off the URL search parameters
+                                        targetinfo.href = targetinfo.href.replace(targetinfo.search,'');
+                                    }
+                                    redirect = targetinfo.href+redirect;
+                                }
+                            }
+                            jobinfo.redirecttarget = redirect;
+                            jobinfo.redirectstart = jobinfo.results.start; 
+                            return check(jobinfo);
+                        }
+                    } else if (res.statusCode >=200 && res.statusCode < 399) {
                         // Did it take too long?
                         if (defaulttimeout < jobinfo.results.runtime) {
                             //logger.log('info','check_audio: Timeout: '+sys.inspect(defaulttimeout)+" is less than "+sys.inspect(jobinfo.results.runtime));
@@ -436,7 +492,7 @@ var processPlaylist = function(targetinfo, jobinfo, playlisttype) {
                             jobinfo.results.message = 'Timeout getting playlist';
                             jobinfo.results.statusCode = 'Timeout';
                             if (jobinfo.originaltarget) jobinfo.parameters.target = jobinfo.originaltarget;
-                            resultobj.process(jobinfo);
+                            resultobj.process(cleanJobinfo(jobinfo));
                             return true;
                         } else {
                             // Read the playlist and pull the first URL.
@@ -451,6 +507,7 @@ var processPlaylist = function(targetinfo, jobinfo, playlisttype) {
                                                 lines[l] = buildResourceUrl(lines[l], targetinfo);
                                                 //logger.log('info','check_audio: pls playlist URL found: '+sys.inspect(lines[l]));
                                                 jobinfo.parameters.target = lines[l];
+                                                if (jobinfo.redirecttarget)  delete jobinfo.redirecttarget;
                                                 return check(jobinfo);
                                             }
                                         } else if (playlisttype === 'xspf') {
@@ -460,10 +517,12 @@ var processPlaylist = function(targetinfo, jobinfo, playlisttype) {
                                             lines[l] = buildResourceUrl(chunks[0], targetinfo);
                                             //logger.log('info','check_audio: xspf playlist URL found: '+sys.inspect(lines[l]));
                                             jobinfo.parameters.target = lines[l];
+                                            if (jobinfo.redirecttarget)  delete jobinfo.redirecttarget;
                                             return check(jobinfo);
                                         } else if (lines[l].indexOf('#') !== 0 && lines[l] !== '') {
                                             //logger.log('info','check_audio: m3u playlist URL found: '+sys.inspect(lines[l]));
                                             found = lines[l];
+                                            if (jobinfo.redirecttarget)  delete jobinfo.redirecttarget;
                                             break;
                                         }
                                     }
@@ -475,18 +534,18 @@ var processPlaylist = function(targetinfo, jobinfo, playlisttype) {
                                     jobinfo.results.success = false;
                                     jobinfo.results.message = 'No stream resource found in the playlist';
                                     if (jobinfo.originaltarget) jobinfo.parameters.target = jobinfo.originaltarget;
-                                    resultobj.process(jobinfo);
+                                    resultobj.process(cleanJobinfo(jobinfo));
                                 } else {
                                     jobinfo.results.success = false;
                                     jobinfo.results.message = 'Unable to parse playlist';
                                     if (jobinfo.originaltarget) jobinfo.parameters.target = jobinfo.originaltarget;
-                                    resultobj.process(jobinfo);
+                                    resultobj.process(cleanJobinfo(jobinfo));
                                 }
                             } else {
                                 jobinfo.results.success = false;
                                 jobinfo.results.message = 'Empty playlist returned';
                                 if (jobinfo.originaltarget) jobinfo.parameters.target = jobinfo.originaltarget;
-                                resultobj.process(jobinfo);
+                                resultobj.process(cleanJobinfo(jobinfo));
                             }
                             return true;
                         }
@@ -495,7 +554,7 @@ var processPlaylist = function(targetinfo, jobinfo, playlisttype) {
                         jobinfo.results.success = false;
                         jobinfo.results.message = 'HTTP status returned from playlist: '+res.statusCode;
                         if (jobinfo.originaltarget) jobinfo.parameters.target = jobinfo.originaltarget;
-                        resultobj.process(jobinfo);
+                        resultobj.process(cleanJobinfo(jobinfo));
                         return true;
                     }
                 }
@@ -513,7 +572,7 @@ var processPlaylist = function(targetinfo, jobinfo, playlisttype) {
                 jobinfo.results.success = false;
                 jobinfo.results.message = e.toString();
                 if (jobinfo.originaltarget) jobinfo.parameters.target = jobinfo.originaltarget;
-                resultobj.process(jobinfo);
+                resultobj.process(cleanJobinfo(jobinfo));
             }
             return true;
         }).on("timeout", function(to){
@@ -527,7 +586,7 @@ var processPlaylist = function(targetinfo, jobinfo, playlisttype) {
                 jobinfo.results.success = false;
                 jobinfo.results.message = 'Timeout getting playlist';
                 if (jobinfo.originaltarget) jobinfo.parameters.target = jobinfo.originaltarget;
-                resultobj.process(jobinfo);
+                resultobj.process(cleanJobinfo(jobinfo));
             }
             req.abort();
             return true;
@@ -548,7 +607,7 @@ var processPlaylist = function(targetinfo, jobinfo, playlisttype) {
             jobinfo.results.success = false;
             jobinfo.results.message = "Caught "+ec.toString();
             if (jobinfo.originaltarget) jobinfo.parameters.target = jobinfo.originaltarget;
-            resultobj.process(jobinfo);
+            resultobj.process(cleanJobinfo(jobinfo));
             killit = true;
         }
         return true;
@@ -586,3 +645,10 @@ var buildResourceUrl = function (resource, targetinfo){
         return resource;
     }
 };
+
+var cleanJobinfo = function(jobinfo) {
+    if (jobinfo.redirecttarget)  delete jobinfo.redirecttarget;
+    if (jobinfo.originaltarget) jobinfo.parameters.target = jobinfo.originaltarget;
+    if (jobinfo.redirectcount) delete jobinfo.redirectcount;
+    return jobinfo;
+}
