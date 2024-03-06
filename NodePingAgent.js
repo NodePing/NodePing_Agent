@@ -373,29 +373,19 @@ var processChecks = function() {
 var runCheck = function (checkinfo) {
     console.log(new Date().toISOString(),'Info: NodePingAgent: running check:',checkinfo._id, checkinfo.type,checkinfo.label);
     var checkpath = config.data.agent_path + path.sep + 'checks' + path.sep + os.platform() + path.sep + 'check_' + checkinfo.type.toLowerCase();
-    fs.access(checkpath+'.js', fs.constants.F_OK, function(err) {
-        if (err) {
-            console.log(new Date().toISOString(),'Error: NodePingAgent: No code available for check type:',checkinfo.type);
-            var resultobj = require('./checks/results.js');
-            var now = new Date().getTime();
-            checkinfo.results = {start:now,end:now,runtime:0,success:false, statusCode:'error', message:'No code available on the AGENT for that check type'};
-            resultobj.process(checkinfo);
-        } else {
-            console.log(new Date().toISOString(),'Info: NodePingAgent: Running check type:',checkinfo.type);
-            try {
-                var check = require(checkpath);
-                // Decode the params value.
-                check.check(checkinfo);
-            } catch (bonk) {
-                console.log(new Date().toISOString(),'Error: NodePingAgent: Check ',checkinfo,' error: ',bonk);
-                var resultobj = require('./checks/results.js');
-                var now = new Date().getTime();
-                checkinfo.results = {start:now,end:now,runtime:0,success:false, statusCode:'error', message:'Invalid check type'};
-                resultobj.process(checkinfo);
-            }
+    try {
+        fs.accessSync(checkpath+'.js', fs.constants.F_OK);
+        console.log(new Date().toISOString(),'Info: NodePingAgent: Running check type:',checkinfo.type);
+        try {
+            var check = require(checkpath);
+            check.check(checkinfo);
+        } catch (bonk) {
+            console.log(new Date().toISOString(),'Error: NodePingAgent: Check ',checkinfo,' error: ',bonk);
         }
-        processChecks();
-    });
+    } catch (e) {
+        console.log(new Date().toISOString(),'Error: NodePingAgent: No code available for check type:',checkinfo.type);
+    }
+    processChecks();
     return true;
 }
 

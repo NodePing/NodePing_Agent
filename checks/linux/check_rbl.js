@@ -104,7 +104,7 @@ var check = exports.check = function(jobinfo){
     }
     var errors = [];
 
-    var tests = ['veiknvhl3om2uka7y2oxktmfym.zen.dq.spamhaus.net',
+    var tests = ['zen.spamhaus.org',
                  'dnsbl.sorbs.net',
                  'spam.dnsbl.sorbs.net',
                  'b.barracudacentral.org',
@@ -136,6 +136,9 @@ var check = exports.check = function(jobinfo){
         var ignoreList = jobinfo.parameters.ignore.split(",");
         for(var ind in ignoreList){
             var entry = trim1white(ignoreList[ind]);
+            if (entry.toLowerCase().indexOf('spamhaus') > -1) {
+                entry = 'zen.spamhaus.org'; //This must match the spamhaus entry at the top.
+            }
             var pos = tests.indexOf(entry);
             if(pos > -1){
                 debugMessage('info',"check_rbl: ignoring: "+sys.inspect(entry));
