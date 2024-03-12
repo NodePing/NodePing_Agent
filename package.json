@@ -8,7 +8,7 @@
         "ioredis": "^5.3.1",
         "ipaddr.js": "1.1.0",
         "jsftp": "0.4.7",
-        "mongodb": "4.13.0",
+        "mongodb": "4.17.0",
         "moment": "^2.24.0",
         "mtrext": "^1.0.5",
         "mysql2": "^2.3.3",
