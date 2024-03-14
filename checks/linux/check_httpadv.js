@@ -525,6 +525,9 @@ var check = function(jobinfo, retry){
                             }
                             return true;
                         }
+                        if (jobinfo.results.message === '' && jobinfo.results.success) {
+                            jobinfo.results.message = 'Success';
+                        }
                         resultobj.process(jobinfo);
                         return true;
                     }
