@@ -58,13 +58,24 @@ var config = {
         console.log('Persisting config to disk.');
         config.writingConfig = true;
         var prettyjsonconfig = JSON.stringify(config.data, null, 6);
-        fs.writeFile(config.data.agent_path+path.sep+'config.json', prettyjsonconfig, {encoding:'utf8',flag:'w'}, function(err){
-            if (err) {
-                console.log('Config write error:',err);
-            } else {
-                console.log('Config data written');
+        fs.open(config.data.agent_path+path.sep+'config.json', 'w+', function(error,fd){
+            if (error) {
+                console.log('config.json open error:',error);
+                console.log('Unable to open config.json.  Please check file permissions.');
+                if (fd) {
+                    fs.close(fd, function(err){});
+                }
+                return false;
             }
-            config.writingConfig = false;
+            fs.write(fd, prettyjsonconfig, function(err, writtenbytes, unusedstring) {
+                if (err) {
+                    console.log('Config data write error:',err);
+                } else {
+                    console.log('Config data written');
+                }
+                fs.close(fd, function(err){});
+                config.writingConfig = false;
+            });
         });
         return true;
     },
@@ -77,13 +88,24 @@ var config = {
         console.log('Persisting npconfig to disk.');
         config.writingNpconfig = true;
         var prettyjsonconfig = JSON.stringify(config.npconfig, null, 6);
-        fs.writeFile(config.data.agent_path+path.sep+'npconfig.json', prettyjsonconfig, {encoding:'utf8',flag:'w'}, function(err){
-            if (err) {
-                console.log('Npconfig write error:',err);
-            } else {
-                console.log('Npconfig data written');
+        fs.open(config.data.agent_path+path.sep+'npconfig.json', 'w+', function(error,fd){
+            if (error) {
+                console.log('npconfig.json open error:',error);
+                console.log('Unable to open npconfig.json.  Please check file permissions.');
+                if (fd) {
+                    fs.close(fd, function(err){});
+                }
+                return false;
             }
-            config.writingNpconfig = false;
+            fs.write(fd, prettyjsonconfig, function(err, writtenbytes, unusedstring) {
+                if (err) {
+                    console.log('Npconfig data write error:',err);
+                } else {
+                    console.log('Npconfig data written');
+                }
+                fs.close(fd, function(err){});
+                config.writingNpconfig = false;
+            });
         });
         return true;
     },
@@ -103,13 +125,24 @@ var config = {
         config.writingCheckConfig = true;
         var prettyjsoncheckdata = JSON.stringify(checkdata, null, 6);
         //console.log('checkdata json:',prettyjsoncheckdata);
-        fs.writeFile(config.data.agent_path+path.sep+'checkdata.json', prettyjsoncheckdata, {encoding:'utf8',flag:'w'}, function(err) {
-            if (err) {
-                console.log('Check data write error:',err);
-            } else {
-                console.log('Check data written');
+        fs.open(config.data.agent_path+path.sep+'checkdata.json', 'w+', function(error,fd){
+            if (error) {
+                console.log('Checkdata open error:',error);
+                console.log('Unable to write checkdata.json.  Please check file permissions.');
+                if (fd) {
+                    fs.close(fd, function(err){});
+                }
+                return false;
             }
-            config.writingCheckConfig = false;
+            fs.write(fd, prettyjsoncheckdata, function(err, writtenbytes, unusedstring) {
+                if (err) {
+                    console.log('Check data write error:',err);
+                } else {
+                    console.log('Check data written');
+                }
+                fs.close(fd, function(err){});
+                config.writingCheckConfig = false;
+            });
         });
         return true;
     }
