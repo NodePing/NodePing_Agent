@@ -125,24 +125,34 @@ var config = {
         config.writingCheckConfig = true;
         var prettyjsoncheckdata = JSON.stringify(checkdata, null, 6);
         //console.log('checkdata json:',prettyjsoncheckdata);
-        fs.open(config.data.agent_path+path.sep+'checkdata.json', 'w+', function(error,fd){
-            if (error) {
-                console.log('Checkdata open error:',error);
-                console.log('Unable to write checkdata.json.  Please check file permissions.');
-                if (fd) {
-                    fs.close(fd, function(err){});
-                }
+        fs.truncate(config.data.agent_path+path.sep+'checkdata.json', function(truncerror) {
+            if (truncerror) {
+                console.log('Checkdata file trucate error:',truncerror);
+                console.log('Unable to truncate checkdata.json.  Please check file permissions.');
                 return false;
             }
-            fs.write(fd, prettyjsoncheckdata, function(err, writtenbytes, unusedstring) {
-                if (err) {
-                    console.log('Check data write error:',err);
-                } else {
-                    console.log('Check data written');
+            fs.open(config.data.agent_path+path.sep+'checkdata.json', 'w+', function(error,fd) {
+                if (error) {
+                    console.log('Checkdata open error:',error);
+                    console.log('Unable to write checkdata.json.  Please check file permissions.');
+                    if (fd) {
+                        fs.close(fd, function(err){});
+                    }
+                    return false;
                 }
-                fs.close(fd, function(err){});
-                config.writingCheckConfig = false;
+                fs.write(fd, prettyjsoncheckdata, function(err, writtenbytes, unusedstring) {
+                    if (err) {
+                        console.log('Check data write error:',err);
+                    } else {
+                        console.log('Check data written');
+                    }
+                    fs.close(fd, function(err){});
+                    config.writingCheckConfig = false;
+                    return true;
+                });
+                return true;
             });
+            return true;
         });
         return true;
     }
