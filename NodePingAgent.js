@@ -45,7 +45,7 @@ process.on('SIGINT', function () {
 var config = {
     data: require('.'+path.sep+'config.json'),
     npconfig: require('.'+path.sep+'npconfig.json'),
-    checkdata: require('.'+path.sep+'checkdata.json'),
+    checkdata: {},
     writingConfig: false,
     writingNpconfig: false,
     writingCheckConfig: false,
@@ -111,7 +111,7 @@ var config = {
     },
     setCheckData: function(checks) {
         if (checks) {
-            checkdata = checks;
+            config.checkdata = checks;
             return config.persistCheckData();
         }
         return false;
@@ -123,7 +123,7 @@ var config = {
             return false;
         }
         config.writingCheckConfig = true;
-        var prettyjsoncheckdata = JSON.stringify(checkdata, null, 6);
+        var prettyjsoncheckdata = JSON.stringify(config.checkdata, null, 6);
         //console.log('checkdata json:',prettyjsoncheckdata);
         fs.truncate(config.data.agent_path+path.sep+'checkdata.json', function(truncerror) {
             if (truncerror) {
@@ -157,6 +157,13 @@ var config = {
         return true;
     }
 };
+
+// Load checkdata if there is any.
+try {
+    config.checkdata = JSON.parse(fs.readFileSync(config.data.agent_path+path.sep+'checkdata.json', 'utf8'));
+} catch (e) {
+    console.log('Error parsing checkdata',e);
+}
 
 var heartbeatoffset = config.data.heartbeatoffset || Math.floor((Math.random() * 20) + 1) * 1000;
 config.data.heartbeatoffset = heartbeatoffset;
@@ -193,7 +200,7 @@ var digestData = function() {
         return false;
     }
     // Send data to NodePing
-    console.log(new Date().toISOString(),'Info: NodePingAgent: offset for heartbeat:',heartbeatoffset);
+    console.log(new Date().toISOString(),'Info: NodePingAgent: Starting up: offset for heartbeat:',heartbeatoffset);
     setTimeout( function() {
         console.log(new Date().toISOString(),'Info: NodePingAgent: Sending heartbeat to NodePing:',dataToReturn);
         postHeartbeat(dataToReturn);
@@ -306,6 +313,7 @@ var postHeartbeat = function(data, retries) {
                                     }
                                 });
                             }
+                            console.log(new Date().toISOString(),'Info: NodePingAgent: number of checks to run:',checksToRun.length, 'staggering checks',checkoffset,'ms');
                             processChecks();
                         }
                     } else {
@@ -408,7 +416,7 @@ var processChecks = function() {
             runCheck(check);
         }, checkoffset);
     } else {
-        console.log(new Date().toISOString(),'Info: NodePingAgent: finished running all checks.');
+        console.log(new Date().toISOString(),'Info: NodePingAgent: finished starting all checks.');
     }
     return true;
 };

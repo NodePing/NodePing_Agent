@@ -19,14 +19,14 @@ var sys = require("util"),
 var config = {
     data: require('..'+path.sep+'config.json'),
     npconfig: require('..'+path.sep+'npconfig.json'),
-    checkdata: require('..'+path.sep+'checkdata.json'),
+    checkdata: {},
     writingCheckConfig: false,
     persistCheckData: function(retry) {
         retry = retry || 0;
         //console.log('Persisting check data to disk - retry = '+retry.toString());
         if (config.writingCheckConfig) {
             if (retry > 5) {
-                console.log('Already writing check data file - We retried 5 times. Giving up.');
+                console.log(new Date(),"error",'Results: Already writing check data file - We retried 5 times. Giving up.');
                 return true;
             } else {
                 retry++;
@@ -37,19 +37,47 @@ var config = {
             }
         } 
         config.writingCheckConfig = true;
-        var prettyjsoncheckdata = JSON.stringify(checkdata, null, 6);
+        var prettyjsoncheckdata = JSON.stringify(config.checkdata, null, 6);
         //console.log('checkdata json:',prettyjsoncheckdata);
-        fs.writeFile(config.data.agent_path+path.sep+'checkdata.json', prettyjsoncheckdata, {encoding:'utf8',flag:'w'}, function(err) {
-            if (err) {
-                console.log('Check data write error:',err);
-            } else {
-                //console.log('Check data written');
+        fs.truncate(config.data.agent_path+path.sep+'checkdata.json', function(truncerror) {
+            if (truncerror) {
+                console.log(new Date(),"error",'Results: Checkdata file trucate error:',truncerror);
+                console.log('Results: Unable to truncate checkdata.json.  Please check file permissions.');
+                return false;
             }
-            config.writingCheckConfig = false;
+            fs.open(config.data.agent_path+path.sep+'checkdata.json', 'w+', function(error,fd) {
+                if (error) {
+                    console.log(new Date(),"error",'Results: Checkdata open error:',error);
+                    console.log('Results: Unable to write checkdata.json.  Please check file permissions.');
+                    if (fd) {
+                        fs.close(fd, function(err){});
+                    }
+                    return false;
+                }
+                fs.write(fd, prettyjsoncheckdata, function(err, writtenbytes, unusedstring) {
+                    if (err) {
+                        console.log(new Date(),"error",'Results: Check data write error:',err);
+                    } else {
+                        console.log(new Date(),"info",'Results: Check data written');
+                    }
+                    fs.close(fd, function(err){});
+                    config.writingCheckConfig = false;
+                    return true;
+                });
+                return true;
+            });
+            return true;
         });
         return true;
     }
 };
+
+// Load checkdata if there is any.
+try {
+    config.checkdata = JSON.parse(fs.readFileSync(config.data.agent_path+path.sep+'checkdata.json', 'utf8'));
+} catch (e) {
+    console.log('Error parsing checkdata in results.js',e);
+}
 
 exports.process = function(jobinfo, override) {
     //console.log(new Date(),'info','results: job: '+sys.inspect(jobinfo));
@@ -312,8 +340,9 @@ function rescheduleCheck(jobinfo) {
     jobinfo.runat = jobinfo.runat + (jobinfo.interval * 60000);
     var herenow = new Date().getTime();
     if (jobinfo.runat < herenow) {
-        jobinfo.runat = herenow - 5000;
+        jobinfo.runat = herenow;
     }
+    //jobinfo.runat = jobinfo.runat - 5000; // Sometimes 1-minute checks will get 'late' results.  This helps them run on time.
     console.log(new Date(),'Updating run at for',jobinfo._id, jobinfo.runat);
     jobinfo.retry = 0;
     jobinfo.state = (jobinfo.results.success) ? 1 : 0;
@@ -324,6 +353,13 @@ function rescheduleCheck(jobinfo) {
     }
     if (!jobinfo.eventinfo) {
         jobinfo.eventinfo = {};
+    }
+    // Load checkdata if there is any.
+    try {
+        config.checkdata = JSON.parse(fs.readFileSync(config.data.agent_path+path.sep+'checkdata.json', 'utf8'));
+        console.log(new Date(),"info",'Results: Loaded checkdata from file');
+    } catch (e) {
+        console.log(new Date(),"Error",'Results: Error loading checkdata for modification',e);
     }
     config.checkdata[jobinfo._id] = jobinfo;
     return config.persistCheckData();
@@ -373,10 +409,10 @@ function postToResultsHandler(jobinfo, rh) {
                 //var newnow = new Date().getTime();
                 //console.log(new Date(),'info',"Post to Resultshandler: runtime: "+rh.name+':'+sys.inspect(newnow - now));
                 if(body == '{"success":true}'){
-                    console.log(new Date(),'info',"results: received success from "+rh.name+": "+sys.inspect(jobinfo._id));
+                    console.log(new Date(),'info',"results: submitted results to "+rh.host+": "+sys.inspect(jobinfo._id));
                 }else{
                     // Bummer, we failed somehow.
-                    console.log(new Date(),'error',"results: Results handler "+rh.name+" error: "+sys.inspect(body));
+                    console.log(new Date(),'error',"results: Results handler "+rh.host+" error: "+sys.inspect(body));
                     if (body.indexOf('throttl') > -1 || body.indexOf('Check is not assigned') > -1) {
                         console.log(new Date(),'info',"Not retrying to submit results due to error type.");
                     } else {
