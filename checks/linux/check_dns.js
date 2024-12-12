@@ -217,6 +217,21 @@ var check = exports.check = function(jobinfo) {
                                     debugMessage('info','check_dns: '+jobinfo.parameters.contentstring+' equals "target" '+myanswer.answer[i].target);
                                     found = true;
                                 }
+                                if (!found && dnstypeid == 33) { // SRV records formatting.
+                                    if (myanswer[section][i].priority && myanswer[section][i].weight && myanswer[section][i].port && myanswer[section][i].target) {
+                                        var srvstring = myanswer[section][i].priority+' '+myanswer[section][i].weight+' '+myanswer[section][i].port+' '+myanswer[section][i].target;
+                                        debugMessage('info','check_dns: SRV string: '+sys.inspect(srvstring));
+                                        if (srvstring == jobinfo.parameters.contentstring) {
+                                            found  = true;
+                                        } else {
+                                            srvstring = srvstring+'.'; // Add trailing dot
+                                            debugMessage('info','check_dns: SRV string with dot: '+sys.inspect(srvstring));
+                                            if (srvstring == jobinfo.parameters.contentstring) {
+                                                found  = true;
+                                            }
+                                        }
+                                    }
+                                }
                                 if (found) {
                                     debugMessage('info','check_dns: We found '+jobinfo.parameters.contentstring);
                                     jobinfo.results.success = true;
