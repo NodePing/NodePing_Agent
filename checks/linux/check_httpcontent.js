@@ -191,7 +191,7 @@ var check = function(jobinfo, retry) {
                 targetoptions.path = targetinfo.pathname;
             }
         }
-        targetinfo.agent = false;
+        targetoptions.timeout = timeout;
         debugMessage('info','check_http: targetip is: '+sys.inspect(jobinfo.targetip));
         debugMessage('info','check_http: targetinfo hostname is: '+sys.inspect(targetinfo.hostname));
         var killit = false;

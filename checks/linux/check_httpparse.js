@@ -186,7 +186,7 @@ var check = function(jobinfo, retry){
                 targetoptions.path = targetinfo.pathname;
             }
         }
-        targetinfo.agent = false;
+        targetoptions.timeout = timeout;
         var killit = false;
         try {
             var timeoutid = setTimeout(function() {

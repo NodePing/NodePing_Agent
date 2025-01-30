@@ -254,7 +254,7 @@ var check = function(jobinfo, retry){
             }
         }
 
-        targetinfo.agent = false;
+        targetoptions.timeout = timeout;
         debugMessage('info',"check_httpadv: targetoptions for "+jobinfo._id+": "+sys.inspect(targetoptions));
         debugMessage('info','check_httpadv: targetip is: '+sys.inspect(jobinfo.targetip));
         var killit = false;

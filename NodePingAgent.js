@@ -27,6 +27,7 @@ var util = require('util'),
     disable = (process.argv[2] == 'disable') ? true : false,
     enable = (process.argv[2] == 'enable') ? true : false,
     remove = (process.argv[2] == 'remove') ? true : false,
+    persist = require('.'+path.sep+'persist'),
     checkoffset = 0,
     pluginsToRun = [],
     dataToReturn = {npcheckclock:{start:new Date().getTime()}},
@@ -45,10 +46,9 @@ process.on('SIGINT', function () {
 var config = {
     data: require('.'+path.sep+'config.json'),
     npconfig: require('.'+path.sep+'npconfig.json'),
-    checkdata: {},
+    checkdata: persist.getCheckdata(),
     writingConfig: false,
     writingNpconfig: false,
-    writingCheckConfig: false,
     persistConfig: function(configData) {
         config.data = configData;
         if (config.writingConfig) {
@@ -108,62 +108,8 @@ var config = {
             });
         });
         return true;
-    },
-    setCheckData: function(checks) {
-        if (checks) {
-            config.checkdata = checks;
-            return config.persistCheckData();
-        }
-        return false;
-    },
-    persistCheckData: function() {
-        console.log('Persisting check data to disk');
-        if (config.writingCheckConfig) {
-            console.log('Already writing check data file - giving up.');
-            return false;
-        }
-        config.writingCheckConfig = true;
-        var prettyjsoncheckdata = JSON.stringify(config.checkdata, null, 6);
-        //console.log('checkdata json:',prettyjsoncheckdata);
-        fs.truncate(config.data.agent_path+path.sep+'checkdata.json', function(truncerror) {
-            if (truncerror) {
-                console.log('Checkdata file trucate error:',truncerror);
-                console.log('Unable to truncate checkdata.json.  Please check file permissions.');
-                return false;
-            }
-            fs.open(config.data.agent_path+path.sep+'checkdata.json', 'w+', function(error,fd) {
-                if (error) {
-                    console.log('Checkdata open error:',error);
-                    console.log('Unable to write checkdata.json.  Please check file permissions.');
-                    if (fd) {
-                        fs.close(fd, function(err){});
-                    }
-                    return false;
-                }
-                fs.write(fd, prettyjsoncheckdata, function(err, writtenbytes, unusedstring) {
-                    if (err) {
-                        console.log('Check data write error:',err);
-                    } else {
-                        console.log('Check data written');
-                    }
-                    fs.close(fd, function(err){});
-                    config.writingCheckConfig = false;
-                    return true;
-                });
-                return true;
-            });
-            return true;
-        });
-        return true;
     }
 };
-
-// Load checkdata if there is any.
-try {
-    config.checkdata = JSON.parse(fs.readFileSync(config.data.agent_path+path.sep+'checkdata.json', 'utf8'));
-} catch (e) {
-    console.log('Error parsing checkdata',e);
-}
 
 var heartbeatoffset = config.data.heartbeatoffset || Math.floor((Math.random() * 20) + 1) * 1000;
 config.data.heartbeatoffset = heartbeatoffset;
@@ -295,10 +241,11 @@ var postHeartbeat = function(data, retries) {
                             oldConfig = false;
                             body.checklist =  false;
                             // Save the new checklist
-                            config.setCheckData(config.checkdata);
+                            persist.setCheckdata(config.checkdata);
                             // Stagger the running of the checks evently over about 50 seconds minus the heartbeat offset
                             var checksToRunCount = checksToRun.length;
                             if (checksToRunCount) {
+                                persist.setNumChecksToRun(checksToRunCount);
                                 if (checksToRunCount > 500 || checksToRunCount < 5) {
                                     checkoffset = 0;
                                 } else {

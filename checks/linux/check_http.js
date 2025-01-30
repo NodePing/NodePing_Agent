@@ -198,7 +198,7 @@ var check = function(jobinfo, retry) {
                 targetoptions.path = targetinfo.pathname;
             }
         }
-        targetinfo.agent = false;
+        targetoptions.timeout = timeout;
         debugMessage('info','check_http: Targetoptions is: '+sys.inspect(targetoptions));
         //logger.log('info',"check_http: Url for job "+jobinfo._id+" is "+jobinfo.parameters.target);
         var completed = false;
