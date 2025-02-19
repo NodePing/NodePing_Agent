@@ -392,15 +392,11 @@ var check = function(jobinfo, retry){
                             if (statuscode != res.statusCode) {
                                 jobinfo.results.success = false;
                                 jobinfo.results.message = 'HTTP status received: '+res.statusCode.toString()+' expected: '+statuscode.toString();
-                                resultobj.process(jobinfo);
-                                return true;
                             }
                         } else if(res.statusCode <200 || res.statusCode > 399){
                             // Status code out of range.
                             jobinfo.results.success = false;
                             jobinfo.results.message = 'HTTP status returned: '+res.statusCode.toString();
-                            resultobj.process(jobinfo);
-                            return true;
                         }
                         if(httpMethod == 'get' && jobinfo.parameters.follow && res.statusCode >=300 && res.statusCode < 399){
                             // Have we redirected too many times already?
@@ -460,7 +456,10 @@ var check = function(jobinfo, retry){
                                 req.abort();
                                 return check(jobinfo);
                             }
-                        } 
+                        } else if (!jobinfo.results.success) {
+                            resultobj.process(jobinfo);
+                            return false;
+                        }
                         // Check headers
                         if (receiveheaders) {
                             debugMessage('info',"check_httpadv: received headers: "+sys.inspect(res.headers));
