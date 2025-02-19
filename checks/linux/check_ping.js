@@ -75,13 +75,14 @@ exports.check = function(jobinfo, retryipv6, cb) {
             pingo.stdout.on('data', function (data) {
                 if (killit) {
                     // Nothing to do here.
-                    //debugMessage('info','check_ping: Receiving another "on" "data" ' + sys.inspect(data));
+                    debugMessage('info','check_ping: Receiving another "on" "data" after killit ' + sys.inspect(data));
                     if(pingo){
                         pingo.kill('SIGKILL');
                         pingo = null;
                     }
                     return true;
                 }else{
+                    debugMessage('info','check_ping: "on" "data" ' + sys.inspect(data));
                     pingdata = pingdata + data.toString();
                 }
             });
@@ -119,6 +120,7 @@ exports.check = function(jobinfo, retryipv6, cb) {
                     killit = true;
                     jobinfo.results.end = new Date().getTime();
                     jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
+                    debugMessage('info','check_ping: pingdata:' + sys.inspect(pingdata));
                     var lines = pingdata.toString().split("\n");
                     var patt1=/([0-9]+[\.][0-9]+[\.][0-9]+[\.][0-9]+)/g;
                     var ip = lines[0].match(patt1);
@@ -128,13 +130,13 @@ exports.check = function(jobinfo, retryipv6, cb) {
                     }else{
                         jobinfo.results.message = pingdata.toString();
                     }
-                    //debugMessage('info','check_ping: Ping: IP is ' + sys.inspect(ip));
+                    debugMessage('info','check_ping: Ping: IP is ' + sys.inspect(ip));
                     var patt2=/[0-9]+[0-9\.][0-9]+ ms/g;
                     var latency = lines[1].match(patt2);
-                    //debugMessage('info','check_ping: Ping: line 1 is ' + sys.inspect(lines[1]));
+                    debugMessage('info','check_ping: Ping: line 1 is ' + sys.inspect(lines[1]));
                     if(latency && latency.length == 1){
                         latency =  parseFloat(latency[0].replace(' ms', ''));
-                        //debugMessage('info','check_ping: Ping: latency is ' + sys.inspect(latency));
+                        debugMessage('info','check_ping: Ping: latency is ' + sys.inspect(latency));
                         if(latency){
                             latency = parseFloat(latency.toFixed(2));
                             jobinfo.results.statusCode = latency;
