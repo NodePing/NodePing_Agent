@@ -139,8 +139,6 @@ var check = exports.check = function(jobinfo) {
     var errors = [];
 
     var tests = ['zen.spamhaus.org',
-                 'dnsbl.sorbs.net',
-                 'spam.dnsbl.sorbs.net',
                  'b.barracudacentral.org',
                  'spamsources.fabel.dk',
                  'bl.spamcop.net',
@@ -149,19 +147,13 @@ var check = exports.check = function(jobinfo) {
                  'bogons.cymru.com',
                  'dnsbl.kempt.net',
                  'ubl.unsubscore.com',
-                 'bl.mailspike.net',
-                 'ix.dnsbl.manitu.net',
-                 '0spam.fusionzero.com',
                  'psbl.surriel.com',
                  'backscatter.spameatingmonkey.net',
                  'bl.spameatingmonkey.net',
                  'truncate.gbudb.net',
                  'blacklist.woody.ch',
-                 'db.wpbl.info',
                  'dnsbl-3.uceprotect.net',
                  'ips.backscatterer.org',
-                 'virbl.bit.nl',
-                 'orvedb.aupads.org'
                 ];
     if (jobinfo.parameters.ignore && jobinfo.parameters.ignore.length > 0) {
         var ignoreList = jobinfo.parameters.ignore.split(",");
