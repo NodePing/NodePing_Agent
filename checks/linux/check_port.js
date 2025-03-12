@@ -130,30 +130,12 @@ exports.check = function(jobinfo){
     }
     jobinfo.results.diag.dnsresolvedip = jobinfo.targetip;
 
-    finishedIt = false;
+    var finishedIt = false;
+    var timeoutid = false;
 
     // create the TCP stream to the server
     try{
         var stream = net.createConnection(jobinfo.parameters.port, jobinfo.targetip);
-        stream.setTimeout(2000+timeout,function(){
-            //logger.log('error',"check_port: timeout");
-            if (finishedIt) { // already got a connect or some other error.  timeout doesn't count.
-                return false;
-            }
-            finishedIt = true;
-            jobinfo.results.end = new Date().getTime();
-            jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
-            jobinfo.results.statusCode = 'timeout';
-            jobinfo.results.message = 'Timeout';
-            if (jobinfo.parameters.invert) {
-                jobinfo.results.success = true;
-            } else {
-                jobinfo.results.success = false;
-            }
-            stream.destroy(); // close the stream
-            resultobj.process(jobinfo);
-            return true;
-        });
         // listen for connection
         stream.on('connect', function() {
             // connection success
@@ -161,6 +143,7 @@ exports.check = function(jobinfo){
                 return false;
             }
             finishedIt = true;
+            if (timeoutid) clearTimeout(timeoutid);
             if (stream && stream.remoteAddress) {
                 jobinfo.results.diag.port.serverip = stream.remoteAddress;
             }
@@ -190,6 +173,7 @@ exports.check = function(jobinfo){
                 return false;
             }
             finishedIt = true;
+            if (timeoutid) clearTimeout(timeoutid);
             jobinfo.results.diag.port.error = error.toString();
             if (error.address) {
                 jobinfo.results.diag.port.serverip = error.address;
@@ -216,6 +200,7 @@ exports.check = function(jobinfo){
                 return false;
             }
             finishedIt = true;
+            if (timeoutid) clearTimeout(timeoutid);
             jobinfo.results.end = new Date().getTime();
             jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
             jobinfo.results.statusCode = 'timeout';
@@ -236,6 +221,7 @@ exports.check = function(jobinfo){
             return false;
         }
         finishedIt = true;
+        if (timeoutid) clearTimeout(timeoutid);
         jobinfo.results.end = new Date().getTime();
         if (jobinfo.parameters.invert) {
             jobinfo.results.success = true;
@@ -247,5 +233,21 @@ exports.check = function(jobinfo){
         resultobj.process(jobinfo);
         return true;
     }
+
+    timeoutid = setTimeout(function() {
+        if (finishedIt) {
+            return true;
+        }
+        finishedIt = true;
+        debugMessage('error',"check_port: setTimeout called: "+timeout.toString()+' for check '+jobinfo._id);
+        jobinfo.results.end = new Date().getTime();
+        jobinfo.results.runtime = jobinfo.results.end - jobinfo.results.start;
+        jobinfo.results.statusCode = 'Timeout';
+        jobinfo.results.success = false;
+        jobinfo.results.message = 'Timeout';
+        resultobj.process(jobinfo);
+        if (stream) stream.destroy();
+        return true;
+    }, timeout + 2000);
     return true;
 };
