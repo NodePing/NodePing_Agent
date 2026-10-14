@@ -276,7 +276,7 @@ exports.check = check = function(jobinfo){
 var checkForDeadAir = function(jobinfo){
     //logger.log("info","Audio Stream checking for dead air: "+jobinfo._id);
     var ffmpeg = require('fluent-ffmpeg');
-    var volumemin = jobinfo.parameters.volumemin || -45;
+    var volumemin = (jobinfo.parameters.volumemin || jobinfo.parameters.volumemin === 0 || jobinfo.parameters.volumemin === '0') ? jobinfo.parameters.volumemin : -45;
     new ffmpeg({ source: jobinfo.parameters.target })
         .withAudioFilter('volumedetect')
         .addOption('-f', 'null')
